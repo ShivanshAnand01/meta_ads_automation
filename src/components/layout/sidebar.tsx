@@ -93,6 +93,10 @@ export function Sidebar() {
   const router = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
 
+  // Hide the sidebar on public auth pages. During static generation pathname is
+  // null; we default to visible and let client hydration correct it.
+  if (pathname === '/login' || pathname?.startsWith('/auth/')) return null
+
   async function handleSignOut() {
     const supabase = createClient()
     await supabase.auth.signOut()
