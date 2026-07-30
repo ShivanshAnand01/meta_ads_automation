@@ -152,11 +152,12 @@ When editing or reviewing code, ensure it is Vercel-friendly:
 ## 9. Database & Prisma Rules
 
 - **Source of truth for runtime queries:** `src/lib/db/supabase-db.ts`.
-- **Source of truth for table shape:** `prisma/schema.prisma`.
-- Any schema change must be mirrored in both files. If they drift, flag it immediately and propose a migration.
+- **Source of truth for database shape:** `supabase/schema.sql` — run it in the Supabase SQL Editor; it is idempotent and creates extensions, tables, RLS, vector indexes, storage buckets, and helper functions.
+- **Prisma mirror:** `prisma/schema.prisma` mirrors the SQL schema. Vector columns use `Unsupported("vector(1536)")` so Prisma validates/describes them without managing the native vector type.
+- Any schema change must be mirrored in both `supabase/schema.sql` and `prisma/schema.prisma`. If they drift, flag it immediately and propose a migration.
 - Use `@map` and `@@map` in Prisma to keep PostgreSQL columns snake_case where the runtime proxy expects it.
-- Never hard-code connection strings in `prisma.config.ts` or `schema.prisma`. Pull from `DATABASE_URL`.
-- For migrations on Supabase, use `prisma migrate deploy` with a `DIRECT_URL` connection string.
+- Never hard-code connection strings in `prisma.config.ts` or `schema.prisma`. Pull from `DATABASE_URL`/`DIRECT_URL`.
+- For migrations on Supabase, prefer applying `supabase/schema.sql`; use `prisma migrate deploy` with a `DIRECT_URL` connection string only for Prisma-managed fields.
 
 ---
 
