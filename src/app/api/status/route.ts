@@ -9,6 +9,13 @@ function maskKey(key: string | undefined): string {
   return `${key.slice(0, 4)}••••••${key.slice(-4)}`
 }
 
+async function tableExists(supabase: ReturnType<typeof createSupabaseServiceClient>, table: string): Promise<boolean> {
+  const { error } = await supabase.from(table).select('id').limit(1)
+  // PGRST116 = no rows, which means the table exists and is empty.
+  if (!error || error.code === 'PGRST116') return true
+  return false
+}
+
 interface StatusResponse {
   envCheck: { ok: boolean; missing: string[] }
   env: {
@@ -22,6 +29,7 @@ interface StatusResponse {
   supabase: {
     connected: boolean
     vectorEnabled: boolean
+    vectorError: string | null
     tables: string[]
     error: string | null
   }
@@ -46,6 +54,7 @@ export async function GET() {
     supabase: {
       connected: false,
       vectorEnabled: false,
+      vectorError: null,
       tables: [],
       error: null,
     },
@@ -62,47 +71,43 @@ export async function GET() {
 
     status.supabase.connected = true
 
-    // Check whether pgvector is installed by looking at the data_type of the
-    // knowledge_chunks.embedding column (should be vector).
-    const { data: columns, error: colError } = await supabase
-      .schema('information_schema')
-      .from('columns')
-      .select('data_type, udt_name')
-      .eq('table_schema', 'public')
-      .eq('table_name', 'knowledge_chunks')
-      .eq('column_name', 'embedding')
-    if (!colError && columns && columns.length > 0) {
-      const col = columns[0] as { data_type: string; udt_name: string }
-      status.supabase.vectorEnabled = col.udt_name === 'vector' || col.data_type === 'USER-DEFINED'
-    }
+    // Check core app tables.
+    const coreTables = [
+      'meta_connections',
+      'ai_settings',
+      'campaigns',
+      'ad_creatives',
+      'ai_conversations',
+      'ai_messages',
+      'ai_notes',
+      'scheduled_jobs',
+      'account_strategy',
+      'manager_memory',
+      'ai_actions',
+      'daily_metrics',
+      'pending_approvals',
+      'knowledge_documents',
+      'knowledge_chunks',
+      'generated_images',
+    ]
 
-    // List app tables from information_schema.
-    const { data: tables, error: tablesError } = await supabase
-      .schema('information_schema')
-      .from('tables')
-      .select('table_name')
-      .eq('table_schema', 'public')
-      .in('table_name', [
-        'meta_connections',
-        'ai_settings',
-        'campaigns',
-        'ad_creatives',
-        'ai_conversations',
-        'ai_messages',
-        'ai_notes',
-        'scheduled_jobs',
-        'account_strategy',
-        'manager_memory',
-        'ai_actions',
-        'daily_metrics',
-        'pending_approvals',
-        'knowledge_documents',
-        'knowledge_chunks',
-        'generated_images',
-      ])
+    const tableChecks = await Promise.all(coreTables.map(async (t) => ({ table: t, exists: await tableExists(supabase, t) })))
+    status.supabase.tables = tableChecks.filter((c) => c.exists).map((c) => c.table)
 
-    if (!tablesError && tables) {
-      status.supabase.tables = tables.map((t) => (t as { table_name: string }).table_name)
+    // Check whether pgvector is usable by calling the semantic search RPC
+    // with a zero embedding. If the function/type is missing, this throws.
+    if (status.supabase.tables.includes('knowledge_chunks')) {
+      const zeroEmbedding = Array(1536).fill(0)
+      const { error: vectorError } = await supabase.rpc('match_knowledge_chunks', {
+        p_user_id: '00000000-0000-0000-0000-000000000000',
+        p_embedding: zeroEmbedding,
+        p_match_count: 1,
+        p_match_threshold: -1,
+      })
+      // A data exception / missing function would surface as an error. A normal
+      // empty result is not an error.
+      status.supabase.vectorEnabled = vectorError === null
+      if (vectorError) status.supabase.vectorError = vectorError.message
     }
   } catch (err) {
     status.supabase.error = err instanceof Error ? err.message : String(err)

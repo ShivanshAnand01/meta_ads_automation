@@ -8,7 +8,7 @@ const PUBLIC_PATHS = new Set([
   '/api/auth/reset-password',
 ])
 
-const PUBLIC_PREFIXES = ['/api/auth/', '/_next/', '/favicon.ico']
+const PUBLIC_PREFIXES = ['/api/auth/', '/api/status', '/_next/', '/favicon.ico']
 
 function isPublic(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true
