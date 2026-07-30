@@ -1,0 +1,271 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model MetaConnection {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  userId            String    @unique @map("user_id")
+  appId             String    @map("app_id")
+  appSecret         String    @map("app_secret")
+  accessToken       String    @map("access_token")
+  tokenExpiry       DateTime? @map("token_expiry")
+  adAccountId       String?   @map("ad_account_id")
+  adAccountName     String?   @map("ad_account_name")
+  adAccountStatus   String?   @map("ad_account_status")
+  adAccountCurrency String?   @map("ad_account_currency")
+  connectedAt       DateTime  @default(dbgenerated("now()")) @map("connected_at")
+  updatedAt         DateTime  @default(dbgenerated("now()")) @updatedAt @map("updated_at")
+
+  @@map("meta_connections")
+}
+
+model AiSettings {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  userId       String   @unique @map("user_id")
+  provider     String   @default("ollama") @map("provider")
+  apiKey       String?  @map("api_key")
+  model        String   @default("llama3") @map("model")
+  baseUrl      String?  @map("base_url")
+  embeddingKey String?  @map("embedding_key")
+  whisperKey   String?  @map("whisper_key")
+  ttsKey       String?  @map("tts_key")
+  createdAt    DateTime @default(dbgenerated("now()")) @map("created_at")
+  updatedAt    DateTime @default(dbgenerated("now()")) @updatedAt @map("updated_at")
+
+  @@map("ai_settings")
+}
+
+model AdCreative {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  userId        String   @map("user_id")
+  title         String   @map("title")
+  description   String   @map("description")
+  imageUrl      String?  @map("image_url")
+  primaryText   String?  @map("primary_text")
+  headline      String?  @map("headline")
+  callToAction  String?  @map("call_to_action")
+  targeting     String?  @map("targeting")
+  expectedSpend Float?   @map("expected_spend")
+  expectedRoas  Float?   @map("expected_roas")
+  actualSpend   Float?   @map("actual_spend")
+  actualRoas    Float?   @map("actual_roas")
+  revenue       Float?   @map("revenue")
+  impressions   Int?     @map("impressions")
+  clicks        Int?     @map("clicks")
+  conversions   Int?     @map("conversions")
+  status        String   @default("draft") @map("status")
+  reviewStatus  String   @default("pending") @map("review_status")
+  reviewNotes   String?  @map("review_notes")
+  language      String   @default("marathi") @map("language")
+  audience      String?  @map("audience")
+  campaignId    String?  @map("campaign_id")
+  createdAt     DateTime @default(dbgenerated("now()")) @map("created_at")
+  updatedAt     DateTime @default(dbgenerated("now()")) @updatedAt @map("updated_at")
+
+  @@map("ad_creatives")
+}
+
+model Campaign {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  userId           String    @map("user_id")
+  name             String    @map("name")
+  objective        String    @map("objective")
+  status           String    @default("draft") @map("status")
+  budget           Float     @map("budget")
+  budgetType       String    @default("daily") @map("budget_type")
+  startDate        DateTime? @map("start_date")
+  endDate          DateTime? @map("end_date")
+  metaCampaignId   String?   @map("meta_campaign_id")
+  totalSpend       Float     @default(0) @map("total_spend")
+  totalRevenue     Float     @default(0) @map("total_revenue")
+  totalImpressions Int       @default(0) @map("total_impressions")
+  totalClicks      Int       @default(0) @map("total_clicks")
+  totalConversions Int       @default(0) @map("total_conversions")
+  lastSyncedAt     DateTime? @map("last_synced_at")
+  createdAt        DateTime  @default(dbgenerated("now()")) @map("created_at")
+  updatedAt        DateTime  @default(dbgenerated("now()")) @updatedAt @map("updated_at")
+
+  @@map("campaigns")
+}
+
+model ScheduledJob {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  userId         String    @map("user_id")
+  type           String    @map("type")
+  campaignId     String?   @map("campaign_id")
+  cronExpression String    @map("cron_expression")
+  status         String    @default("active") @map("status")
+  lastRunAt      DateTime? @map("last_run_at")
+  nextRunAt      DateTime? @map("next_run_at")
+  config         String?   @map("config")
+  createdAt      DateTime  @default(dbgenerated("now()")) @map("created_at")
+  updatedAt      DateTime  @default(dbgenerated("now()")) @updatedAt @map("updated_at")
+
+  @@map("scheduled_jobs")
+}
+
+model AiConversation {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  userId     String   @map("user_id")
+  title      String   @default("New Conversation") @map("title")
+  autonomous Boolean  @default(false) @map("autonomous")
+  createdAt  DateTime @default(dbgenerated("now()")) @map("created_at")
+  updatedAt  DateTime @default(dbgenerated("now()")) @updatedAt @map("updated_at")
+
+  @@map("ai_conversations")
+}
+
+model AiMessage {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  conversationId String   @map("conversation_id")
+  role           String   @map("role")
+  content        String   @default("") @map("content")
+  toolCalls      String?  @map("tool_calls")
+  toolResults    String?  @map("tool_results")
+  toolCallId     String?  @map("tool_call_id")
+  toolName       String?  @map("tool_name")
+  createdAt      DateTime @default(dbgenerated("now()")) @map("created_at")
+
+  @@map("ai_messages")
+}
+
+model AiNote {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  conversationId String   @map("conversation_id")
+  title          String   @map("title")
+  content        String   @map("content")
+  type           String   @default("note") @map("type")
+  createdAt      DateTime @default(dbgenerated("now()")) @map("created_at")
+
+  @@map("ai_notes")
+}
+
+model AccountStrategy {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  userId         String   @unique @map("user_id")
+  targetRoas     Float    @default(2.0) @map("target_roas")
+  targetCpa      Float?   @map("target_cpa")
+  monthlyBudget  Float?   @map("monthly_budget")
+  dailyBudgetCap Float?   @map("daily_budget_cap")
+  scalingRules   String?  @map("scaling_rules")
+  guardrails     String?  @map("guardrails")
+  focus          String?  @map("focus")
+  autoOptimize   Boolean  @default(false) @map("auto_optimize")
+  createdAt      DateTime @default(dbgenerated("now()")) @map("created_at")
+  updatedAt      DateTime @default(dbgenerated("now()")) @updatedAt @map("updated_at")
+
+  @@map("account_strategy")
+}
+
+model ManagerMemory {
+  id         String                   @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  userId     String                   @map("user_id")
+  kind       String                   @map("kind")
+  content    String                   @map("content")
+  relatedId  String?                  @map("related_id")
+  importance Int                      @default(5) @map("importance")
+  metadata   String?                  @map("metadata")
+  embedding  Unsupported("vector(1536)")? @map("embedding")
+  createdAt  DateTime                 @default(dbgenerated("now()")) @map("created_at")
+
+  @@map("manager_memory")
+}
+
+model AiAction {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  userId         String   @map("user_id")
+  conversationId String?  @map("conversation_id")
+  toolName       String   @map("tool_name")
+  arguments      String?  @map("arguments")
+  result         String?  @map("result")
+  status         String   @default("success") @map("status")
+  actor          String   @default("agent") @map("actor")
+  approvedBy     String?  @map("approved_by")
+  createdAt      DateTime @default(dbgenerated("now()")) @map("created_at")
+
+  @@map("ai_actions")
+}
+
+model DailyMetric {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  userId         String   @map("user_id")
+  campaignId     String?  @map("campaign_id")
+  metaCampaignId String?  @map("meta_campaign_id")
+  date           DateTime @map("date")
+  spend          Float    @default(0) @map("spend")
+  impressions    Int      @default(0) @map("impressions")
+  clicks         Int      @default(0) @map("clicks")
+  conversions    Int      @default(0) @map("conversions")
+  reach          Int      @default(0) @map("reach")
+  frequency      Float    @default(0) @map("frequency")
+  ctr            Float    @default(0) @map("ctr")
+  cpc            Float    @default(0) @map("cpc")
+  cpm            Float    @default(0) @map("cpm")
+  revenue        Float    @default(0) @map("revenue")
+  createdAt      DateTime @default(dbgenerated("now()")) @map("created_at")
+
+  @@map("daily_metrics")
+}
+
+model PendingApproval {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  userId         String    @map("user_id")
+  conversationId String?   @map("conversation_id")
+  toolName       String    @map("tool_name")
+  arguments      String    @map("arguments")
+  summary        String    @map("summary")
+  risk           String    @default("medium") @map("risk")
+  status         String    @default("pending") @map("status")
+  decidedBy      String?   @map("decided_by")
+  decidedAt      DateTime? @map("decided_at")
+  result         String?   @map("result")
+  createdAt      DateTime  @default(dbgenerated("now()")) @map("created_at")
+
+  @@map("pending_approvals")
+}
+
+model KnowledgeDocument {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  userId     String   @map("user_id")
+  title      String   @map("title")
+  sourceType String   @map("source_type")
+  content    String   @map("content")
+  filePath   String?  @map("file_path")
+  fileType   String?  @map("file_type")
+  chunkCount Int      @default(0) @map("chunk_count")
+  createdAt  DateTime @default(dbgenerated("now()")) @map("created_at")
+  updatedAt  DateTime @default(dbgenerated("now()")) @updatedAt @map("updated_at")
+
+  @@map("knowledge_documents")
+}
+
+model KnowledgeChunk {
+  id         String                   @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  documentId String                   @map("document_id")
+  userId     String                   @map("user_id")
+  content    String                   @map("content")
+  embedding  Unsupported("vector(1536)")? @map("embedding")
+  chunkIndex Int                      @map("chunk_index")
+  tokenCount Int                      @map("token_count")
+  createdAt  DateTime                 @default(dbgenerated("now()")) @map("created_at")
+
+  @@map("knowledge_chunks")
+}
+
+model GeneratedImage {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @map("id")
+  userId      String   @map("user_id")
+  prompt      String   @map("prompt")
+  imageUrl    String   @map("image_url")
+  storagePath String?  @map("storage_path")
+  provider    String   @map("provider")
+  size        String?  @map("size")
+  style       String?  @map("style")
+  createdAt   DateTime @default(dbgenerated("now()")) @map("created_at")
+
+  @@map("generated_images")
+}
