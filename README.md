@@ -108,13 +108,15 @@ Preview**:
 | `SUPABASE_SERVICE_ROLE_KEY` | Your Supabase service role key |
 | `DATABASE_URL` | Supabase pooled connection string |
 | `DIRECT_URL` | Supabase direct connection string |
+| `RUNNER_SECRET` | Long random string for the AI background runner |
+| `VAULT_ENABLED` | `true` |
+| `NEXT_TELEMETRY_DISABLED` | `1` |
 
-These are already configured for the existing project; verify they are set for the right
-environments.
+These are now configured for the existing project for both Production and Preview.
 
 ### 5. Deploy
 
-Vercel will run `prisma generate && next build` automatically (configured in `vercel.json`).
+Vercel will run `npm run build` automatically, which executes `scripts/build.js` to generate the Prisma client and build Next.js.
 
 After connecting GitHub, every `git push` will trigger a new Production or Preview
 deployment.
