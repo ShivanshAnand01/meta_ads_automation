@@ -726,7 +726,7 @@ $$;
 -- List a user's secret names (not values) for diagnostics.
 create or replace function public.list_user_secrets(p_user_id uuid)
 returns table (name text, description text, created_at timestamptz)
-language sql security definer stable
+language plpgsql security definer stable
 as $$
 begin
   if coalesce(current_setting('request.jwt.claims', true)::jsonb ->> 'role', '') <> 'service_role'
