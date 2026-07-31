@@ -2,6 +2,7 @@ import { db } from '@/lib/db/supabase-db'
 import { requireUserId, handleError } from '@/lib/supabase/server'
 import { createAIProvider } from '@/lib/ai/factory'
 import { suggestCreativeImprovements } from '@/lib/ai/creative-generator'
+import { resolveSecrets, SECRET_KEYS } from '@/lib/secrets'
 import type { AIProviderType } from '@/lib/ai/types'
 import type { AdCreativeData } from '@/lib/meta/types'
 
@@ -19,23 +20,27 @@ export async function POST(request: Request) {
     }
 
     const creative = await db.adCreative.findUnique({
-      where: { id: creativeId },
+      where: { id: creativeId, userId },
     }) as Record<string, unknown> | null
 
     if (!creative) {
       return Response.json({ error: 'Creative not found' }, { status: 404 })
     }
 
-    const settings = await db.aiSettings.findUnique({ where: { userId } }) as
+    const rawSettings = await db.aiSettings.findUnique({ where: { userId } }) as
       | { provider: string; apiKey: string | null; model: string; baseUrl: string | null }
       | null
 
-    if (!settings) {
+    if (!rawSettings) {
       return Response.json(
         { error: 'AI not configured' },
         { status: 400 }
       )
     }
+
+    const settings = await resolveSecrets(rawSettings, [
+      { column: 'apiKey', vaultKey: SECRET_KEYS.aiApiKey },
+    ])
 
     const provider = createAIProvider(settings.provider as AIProviderType, {
       apiKey: settings.apiKey || undefined,

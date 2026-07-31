@@ -14,12 +14,12 @@ import { Brain, Save, Loader2, CheckCircle2, Cpu, Key, Server, Sparkles } from '
 const providerInfo = {
   anthropic: {
     name: 'Claude (Anthropic)',
-    description: 'Best for Marathi ad creative generation. Sonnet 4.5 and Opus 4.1 available. Excellent reasoning.',
+    description: 'Best for Marathi ad creative generation. Claude 3.5 Sonnet and Opus available. Excellent reasoning.',
     icon: Sparkles,
     needsApiKey: true,
     needsBaseUrl: false,
     defaultBaseUrl: '',
-    defaultModel: 'claude-sonnet-4-5-20250514',
+    defaultModel: 'claude-3-5-sonnet-20241022',
   },
   ollama: {
     name: 'Ollama (Local, Free)',
@@ -32,7 +32,7 @@ const providerInfo = {
   },
   openai: {
     name: 'OpenAI GPT',
-    description: 'GPT-5.4, GPT-5.4 Mini, and GPT-5.4 Nano available. Good multilingual support including Marathi.',
+    description: 'GPT-4o and GPT-4o Mini available. Good multilingual support including Marathi.',
     icon: Key,
     needsApiKey: true,
     needsBaseUrl: false,

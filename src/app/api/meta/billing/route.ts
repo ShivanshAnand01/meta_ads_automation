@@ -1,30 +1,27 @@
 import { db } from '@/lib/db/supabase-db'
 import { requireUserId, handleError } from '@/lib/supabase/server'
-import { normalizeAdAccountId } from '@/lib/meta/user-client'
+import { getMetaConnection, normalizeAdAccountId } from '@/lib/meta/user-client'
 
 const GRAPH_API_VERSION = 'v21.0'
 const BASE_URL = `https://graph.facebook.com/${GRAPH_API_VERSION}`
+
+function centsToCurrency(cents: string | number): number {
+  const num = typeof cents === 'string' ? Number(cents) : cents
+  return Number.isFinite(num) ? num / 100 : 0
+}
 
 export async function GET() {
   try {
     const userId = await requireUserId()
 
-    const conn = await db.metaConnection.findUnique({
-      where: { userId },
-    }) as {
-      accessToken: string
-      adAccountId: string | null
-      adAccountName: string | null
-      adAccountCurrency: string | null
-    } | null
-
+    const conn = await getMetaConnection(userId)
     if (!conn) {
       return Response.json({ connected: false })
     }
 
-    let balance = '0'
-    let spendCap = '0'
-    let amountSpent = '0'
+    let balance = 0
+    let spendCap = 0
+    let amountSpent = 0
     let billingHistory: Array<{
       amount: string
       currency: string
@@ -37,22 +34,20 @@ export async function GET() {
 
     if (actId) {
       try {
-        const balanceUrl = `${BASE_URL}/${actId}?fields=balance,spend_cap,amount_spent&access_token=${conn.accessToken}`
+        const balanceUrl = `${BASE_URL}/${actId}?fields=balance,spend_cap,amount_spent&access_token=${encodeURIComponent(conn.accessToken)}`
         const balanceRes = await fetch(balanceUrl)
         const balanceData = await balanceRes.json()
         if (balanceRes.ok && !balanceData.error) {
-          balance = balanceData.balance || '0'
-          spendCap = balanceData.spend_cap || '0'
-          amountSpent = balanceData.amount_spent || '0'
+          balance = centsToCurrency(balanceData.balance)
+          spendCap = centsToCurrency(balanceData.spend_cap)
+          amountSpent = centsToCurrency(balanceData.amount_spent)
         }
       } catch {
-        balance = '0'
-        spendCap = '0'
-        amountSpent = '0'
+        // Fall back to zero values
       }
 
       try {
-        const billingUrl = `${BASE_URL}/${actId}/billing_invoices?fields=amount,currency,billing_date,status,invoice_url&access_token=${conn.accessToken}`
+        const billingUrl = `${BASE_URL}/${actId}/billing_invoices?fields=amount,currency,billing_date,status,invoice_url&access_token=${encodeURIComponent(conn.accessToken)}`
         const billingRes = await fetch(billingUrl)
         const billingData = await billingRes.json()
         if (billingRes.ok && !billingData.error) {
@@ -93,6 +88,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    await requireUserId()
     const body = await request.json()
 
     if (body.action === 'add_funds') {
@@ -108,10 +104,7 @@ export async function POST(request: Request) {
       { error: 'Unknown action' },
       { status: 400 }
     )
-  } catch {
-    return Response.json(
-      { error: 'Failed to process request' },
-      { status: 500 }
-    )
+  } catch (error) {
+    return handleError(error, 'Failed to process request')
   }
 }

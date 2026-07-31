@@ -4,6 +4,7 @@ import { createServerClient } from '@supabase/ssr'
 const PUBLIC_PATHS = new Set([
   '/login',
   '/auth/callback',
+  '/reset-password',
   '/api/auth/signup',
   '/api/auth/reset-password',
 ])

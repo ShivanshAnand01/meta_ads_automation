@@ -21,6 +21,19 @@ function num(v: string | undefined | null): number {
   return Number.isFinite(n) ? n : 0
 }
 
+function revenueFromActions(actions: unknown): number {
+  if (!Array.isArray(actions)) return 0
+  return actions.reduce((sum, a) => {
+    if (!a || typeof a !== 'object') return sum
+    const type = String((a as Record<string, unknown>).action_type || '').toLowerCase()
+    const value = Number((a as Record<string, unknown>).value)
+    if (type.includes('purchase') || type === 'offsite_conversion') {
+      return sum + (Number.isFinite(value) ? value : 0)
+    }
+    return sum
+  }, 0)
+}
+
 /** Pull daily + lifetime campaign insights from Meta and persist locally. */
 export async function syncCampaignInsights(userId: string, days = 30): Promise<SyncResult> {
   const conn = await getMetaConnection(userId)
@@ -69,6 +82,7 @@ export async function syncCampaignInsights(userId: string, days = 30): Promise<S
       const ctr = num(row.ctr)
       const cpc = num(row.cpc)
       const cpm = num(row.cpm)
+      const revenue = revenueFromActions((row as any).action_values)
 
       totalSpend += spend
       totalConversions += conversions
@@ -76,7 +90,7 @@ export async function syncCampaignInsights(userId: string, days = 30): Promise<S
       await upsertDailyMetric(userId, campaignId, metaId, date, {
         spend, impressions: Math.round(impressions), clicks: Math.round(clicks),
         conversions: Math.round(conversions), reach: Math.round(reach), frequency,
-        ctr, cpc, cpm,
+        ctr, cpc, cpm, revenue,
       })
       dailyRows++
     }
@@ -98,10 +112,12 @@ export async function syncCampaignInsights(userId: string, days = 30): Promise<S
       const impressions = num(row.impressions)
       const clicks = num(row.clicks)
       const conversions = num(row.conversions)
+      const revenue = revenueFromActions((row as any).action_values)
       await db.campaign.update({
         where: { id: local.id },
         data: {
           totalSpend: spend,
+          totalRevenue: revenue,
           totalImpressions: Math.round(impressions),
           totalClicks: Math.round(clicks),
           totalConversions: Math.round(conversions),
@@ -132,18 +148,24 @@ async function upsertDailyMetric(
   dateStr: string,
   m: {
     spend: number; impressions: number; clicks: number; conversions: number
-    reach: number; frequency: number; ctr: number; cpc: number; cpm: number
+    reach: number; frequency: number; ctr: number; cpc: number; cpm: number; revenue: number
   }
 ): Promise<void> {
   const supabase = await getSupabaseServer()
   const date = dateStr
-  const { data: existing } = await supabase
+  let query = supabase
     .from('daily_metrics')
     .select('id')
     .eq('user_id', userId)
-    .eq('campaign_id', campaignId || '')
     .eq('date', date)
-    .maybeSingle()
+
+  if (campaignId) {
+    query = query.eq('campaign_id', campaignId)
+  } else {
+    query = query.is('campaign_id', null)
+  }
+
+  const { data: existing } = await query.maybeSingle()
 
   const payload = {
     user_id: userId,
@@ -159,6 +181,7 @@ async function upsertDailyMetric(
     ctr: m.ctr,
     cpc: m.cpc,
     cpm: m.cpm,
+    revenue: m.revenue,
   }
 
   if (existing) {
@@ -203,7 +226,7 @@ export async function syncFromMeta(userId: string): Promise<SyncResult> {
       if (existing) {
         await db.campaign.update({ where: { id: existing.id }, data })
       } else {
-        await db.campaign.create({ data: { ...data, metaCampaignId: mc.id, status: 'active' } })
+        await db.campaign.create({ data: { ...data, metaCampaignId: mc.id } })
       }
       synced++
     }
@@ -248,7 +271,7 @@ export async function publishCampaignToMeta(userId: string, campaignId: string):
 
     await db.campaign.update({
       where: { id: campaignId },
-      data: { metaCampaignId: result.id, status: 'active' },
+      data: { metaCampaignId: result.id, status: campaign.status === 'active' ? 'active' : 'paused' },
     })
 
     return { success: true, metaCampaignId: result.id, message: `Published "${campaign.name}" to Meta (id: ${result.id})` }
@@ -321,12 +344,6 @@ export async function getAccountSummary(userId: string, days = 30): Promise<{
     totalImpressions += num(r.impressions)
     totalClicks += num(r.clicks)
     totalConversions += num(r.conversions)
-  }
-
-  const campaigns = await db.campaign.findMany({ where: { userId } }) as any[]
-  for (const c of campaigns) {
-    totalSpend = Math.max(totalSpend, num(c.totalSpend))
-    totalConversions += 0
   }
 
   return {

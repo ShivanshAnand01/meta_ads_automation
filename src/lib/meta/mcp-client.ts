@@ -1,7 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import path from 'node:path'
-import { db } from '@/lib/db/supabase-db'
+import { getMetaConnection } from '@/lib/meta/user-client'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -128,12 +128,12 @@ if (process.env.NODE_ENV !== 'production') globalForMCP.mcpClient = mcpClient
  *
  * @param userId The authenticated user's ID
  */
-export async function getMCPClient(userId?: string): Promise<MCPClientManager> {
-  const resolvedUserId = userId || (await getDefaultUserIdFromDB())
-  const conn = await db.metaConnection.findUnique({ where: { userId: resolvedUserId } }) as
-    | { accessToken: string; appId: string; appSecret: string; adAccountId?: string }
-    | null
+export async function getMCPClient(userId: string): Promise<MCPClientManager> {
+  if (!userId) {
+    throw new Error('User ID is required to connect to Meta.')
+  }
 
+  const conn = await getMetaConnection(userId)
   if (!conn) {
     throw new Error('Not connected to Meta. Please connect your Meta Ads account first.')
   }
@@ -145,9 +145,4 @@ export async function getMCPClient(userId?: string): Promise<MCPClientManager> {
   })
 
   return mcpClient
-}
-
-async function getDefaultUserIdFromDB(): Promise<string> {
-  const { getDefaultUserId } = await import('@/lib/db/get-user')
-  return getDefaultUserId()
 }

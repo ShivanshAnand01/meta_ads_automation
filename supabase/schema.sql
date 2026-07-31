@@ -513,9 +513,11 @@ alter table public.knowledge_chunks enable row level security;
 
 drop policy if exists "owner read"   on public.knowledge_chunks;
 drop policy if exists "owner insert" on public.knowledge_chunks;
+drop policy if exists "owner update" on public.knowledge_chunks;
 drop policy if exists "owner delete" on public.knowledge_chunks;
 create policy "owner read"   on public.knowledge_chunks for select using (user_id = auth.uid());
 create policy "owner insert" on public.knowledge_chunks for insert with check (user_id = auth.uid());
+create policy "owner update" on public.knowledge_chunks for update using (user_id = auth.uid()) with check (user_id = auth.uid());
 create policy "owner delete" on public.knowledge_chunks for delete using (user_id = auth.uid());
 
 -- Semantic similarity search function
@@ -704,12 +706,18 @@ as $$
   limit 1;
 $$;
 
--- Upsert a user's secret (create or update). Called with the service role.
+-- Upsert a user's secret (create or update). Called with the service role,
+-- or by the owning authenticated user. Rejects cross-user writes.
 create or replace function public.set_user_secret(p_user_id uuid, p_key text, p_secret text, p_description text default '')
 returns void
 language plpgsql security definer
 as $$
 begin
+  if coalesce(current_setting('request.jwt.claims', true)::jsonb ->> 'role', '') <> 'service_role'
+     and auth.uid() is distinct from p_user_id then
+    raise exception 'Not authorized to modify secrets for this user';
+  end if;
+
   delete from vault.secrets where name = p_user_id::text || '__' || p_key;
   perform vault.create_secret(p_secret, p_user_id::text || '__' || p_key, coalesce(p_description, p_key));
 end;
@@ -720,7 +728,15 @@ create or replace function public.list_user_secrets(p_user_id uuid)
 returns table (name text, description text, created_at timestamptz)
 language sql security definer stable
 as $$
-  select name, description, created_at
-  from vault.secrets
-  where name like p_user_id::text || '__%';
+begin
+  if coalesce(current_setting('request.jwt.claims', true)::jsonb ->> 'role', '') <> 'service_role'
+     and auth.uid() is distinct from p_user_id then
+    raise exception 'Not authorized to list secrets for this user';
+  end if;
+
+  return query
+  select s.name, s.description, s.created_at
+  from vault.secrets s
+  where s.name like p_user_id::text || '__%';
+end;
 $$;

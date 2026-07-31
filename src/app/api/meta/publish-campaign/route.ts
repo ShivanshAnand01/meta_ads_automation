@@ -1,10 +1,11 @@
 import { db } from '@/lib/db/supabase-db'
 import { requireUserId, handleError } from '@/lib/supabase/server'
 import { getMCPClient } from '@/lib/meta/mcp-client'
+import { getMetaConnection, normalizeAdAccountId } from '@/lib/meta/user-client'
 
 export async function POST(request: Request) {
   try {
-    await requireUserId()
+    const userId = await requireUserId()
     const body = await request.json()
     const { campaignId } = body as { campaignId?: string }
 
@@ -16,7 +17,7 @@ export async function POST(request: Request) {
     }
 
     const campaign = await db.campaign.findUnique({
-      where: { id: campaignId },
+      where: { id: campaignId, userId },
     }) as Record<string, unknown> | null
 
     if (!campaign) {
@@ -26,10 +27,7 @@ export async function POST(request: Request) {
       )
     }
 
-    const conn = await db.metaConnection.findUnique({
-      where: { userId: campaign.userId as string },
-    }) as { adAccountId: string | null } | null
-
+    const conn = await getMetaConnection(userId)
     if (!conn || !conn.adAccountId) {
       return Response.json(
         { error: 'No Meta ad account connected. Please connect and select an ad account first.' },
@@ -37,12 +35,13 @@ export async function POST(request: Request) {
       )
     }
 
-    const mcp = await getMCPClient()
+    const status = campaign.status === 'active' ? 'ACTIVE' : 'PAUSED'
+    const mcp = await getMCPClient(userId)
     const result = await mcp.callTool('create_campaign', {
-      account_id: conn.adAccountId,
+      account_id: `act_${normalizeAdAccountId(conn.adAccountId)}`,
       name: campaign.name as string,
       objective: campaign.objective as string,
-      status: campaign.status === 'active' ? 'ACTIVE' : 'PAUSED',
+      status,
       daily_budget: campaign.budgetType === 'daily' ? Math.round((campaign.budget as number) * 100) : undefined,
       lifetime_budget: campaign.budgetType === 'lifetime' ? Math.round((campaign.budget as number) * 100) : undefined,
       start_time: campaign.startDate ? new Date(campaign.startDate as string).toISOString() : undefined,
@@ -51,10 +50,10 @@ export async function POST(request: Request) {
 
     if (result.success && result.campaign_id) {
       const updated = await db.campaign.update({
-        where: { id: campaignId },
+        where: { id: campaignId, userId },
         data: {
           metaCampaignId: result.campaign_id,
-          status: 'active',
+          status: status.toLowerCase(),
         },
       })
       return Response.json({

@@ -69,8 +69,10 @@ export async function generateEmbedding(
 
 export function canGenerateEmbeddings(provider: AIProviderType, apiKey?: string | null, embeddingKey?: string | null): boolean {
   const effectiveKey = embeddingKey || apiKey
+  // OpenAI text-embedding-3-small produces 1536-dim vectors matching the
+  // pgvector schema. Ollama models like nomic-embed-text output 768-dim
+  // vectors and will fail to insert; use OpenAI for embeddings.
   if (provider === 'openai' && effectiveKey) return true
-  if (provider === 'ollama') return true
   return false
 }
 

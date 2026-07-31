@@ -35,6 +35,12 @@ function num(v: unknown): number {
   return Number.isFinite(n) ? n : 0
 }
 
+async function validateCampaignOwnership(campaignId: unknown, userId: string): Promise<boolean> {
+  if (campaignId === undefined || campaignId === null) return true
+  const campaign = await db.campaign.findUnique({ where: { id: campaignId as string, userId } })
+  return campaign != null
+}
+
 /** Execute a "local" (non-Meta) tool. Returns a JSON-serializable result. */
 export async function executeLocalTool(tool: string, args: Record<string, unknown>, ctx: LocalToolContext): Promise<unknown> {
   const { userId } = ctx
@@ -53,10 +59,10 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
       ctx.sendEvent({ t: 'question', questionId, question, placeholder })
 
       try {
-        const answer = await createPendingQuestion(questionId, question)
+        const answer = await createPendingQuestion(questionId, question, ctx.conversationId || 'unknown', userId)
         return { success: true, answer, message: 'User answered the question.' }
       } catch (err) {
-        cancelPendingQuestion(questionId)
+        cancelPendingQuestion(ctx.conversationId || 'unknown', questionId)
         return {
           error: err instanceof Error ? err.message : 'Question failed',
           answer: null,
@@ -124,7 +130,7 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
       }
     }
     case 'get_local_campaign': {
-      const campaign = await db.campaign.findUnique({ where: { id: args.campaignId as string } }) as any
+      const campaign = await db.campaign.findUnique({ where: { id: args.campaignId as string, userId } }) as any
       if (!campaign) return { error: 'Campaign not found' }
       return { campaign }
     }
@@ -149,12 +155,12 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
       if (args.status) data.status = args.status
       if (args.budget !== undefined) data.budget = num(args.budget)
       if (args.budgetType) data.budgetType = args.budgetType
-      const campaign = await db.campaign.update({ where: { id: args.campaignId as string }, data }) as any
+      const campaign = await db.campaign.update({ where: { id: args.campaignId as string, userId }, data }) as any
       if (!campaign) return { error: 'Campaign not found' }
       return { success: true, campaignId: campaign.id, message: 'Campaign updated' }
     }
     case 'delete_local_campaign': {
-      await db.campaign.delete({ where: { id: args.campaignId as string } })
+      await db.campaign.delete({ where: { id: args.campaignId as string, userId } })
       return { success: true, message: 'Campaign deleted' }
     }
 
@@ -175,6 +181,10 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
       }
     }
     case 'create_local_creative': {
+      const campaignId = (args.campaignId as string) || null
+      if (campaignId && !(await validateCampaignOwnership(campaignId, userId))) {
+        return { error: 'Campaign not found' }
+      }
       const creative = await db.adCreative.create({
         data: {
           userId,
@@ -188,7 +198,7 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
           language: (args.language as string) || 'marathi',
           audience: (args.audience as string) || 'Maharashtra',
           imageUrl: (args.imageUrl as string) || null,
-          campaignId: (args.campaignId as string) || null,
+          campaignId,
           status: 'draft', reviewStatus: 'pending',
         },
       }) as any
@@ -204,12 +214,12 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
       if (args.status) data.status = args.status
       if (args.reviewStatus) data.reviewStatus = args.reviewStatus
       if (args.revenue !== undefined) data.revenue = num(args.revenue)
-      const creative = await db.adCreative.update({ where: { id: args.creativeId as string }, data }) as any
+      const creative = await db.adCreative.update({ where: { id: args.creativeId as string, userId }, data }) as any
       if (!creative) return { error: 'Creative not found' }
       return { success: true, creativeId: creative.id, message: 'Creative updated' }
     }
     case 'delete_local_creative': {
-      await db.adCreative.delete({ where: { id: args.creativeId as string } })
+      await db.adCreative.delete({ where: { id: args.creativeId as string, userId } })
       return { success: true, message: 'Creative deleted' }
     }
 
@@ -251,6 +261,9 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
       const angle = (args.angle as string) || 'benefit-driven'
       const cta = (args.callToAction as string) || 'LEARN_MORE'
       const campaignId = (args.campaignId as string) || null
+      if (campaignId && !(await validateCampaignOwnership(campaignId, userId))) {
+        return { error: 'Campaign not found' }
+      }
       const imagePromptArg = (args.imagePrompt as string) || ''
 
       // Generate Marathi ad copy via the provider
@@ -326,7 +339,7 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
 
     // --- Creative review / improve (LLM) ----------------------------------
     case 'review_creative': {
-      const creative = await db.adCreative.findUnique({ where: { id: args.creativeId as string } }) as any
+      const creative = await db.adCreative.findUnique({ where: { id: args.creativeId as string, userId } }) as any
       if (!creative) return { error: 'Creative not found' }
       const reviewPrompt = `Review this Marathi ad creative for the Maharashtrian audience:
 Title: ${creative.title}
@@ -346,7 +359,7 @@ Provide JSON: { "score": number(1-10), "strengths": [], "weaknesses": [], "sugge
       }
     }
     case 'improve_creative': {
-      const creative = await db.adCreative.findUnique({ where: { id: args.creativeId as string } }) as any
+      const creative = await db.adCreative.findUnique({ where: { id: args.creativeId as string, userId } }) as any
       if (!creative) return { error: 'Creative not found' }
       const improvePrompt = `Improve this Marathi ad creative:
 Title: ${creative.title}
@@ -358,7 +371,7 @@ Return JSON: { title, primaryText (Marathi/Devanagari), headline (Marathi/Devana
         const text = await prov.generateCompletion(improvePrompt, 'You are an expert Marathi ad copywriter. Respond only with valid JSON.')
         try {
           const improved = JSON.parse(text)
-          await db.adCreative.update({ where: { id: creative.id }, data: {
+          await db.adCreative.update({ where: { id: creative.id, userId }, data: {
             title: improved.title || creative.title,
             primaryText: improved.primaryText || creative.primaryText,
             headline: improved.headline || creative.headline,
@@ -472,17 +485,18 @@ Return JSON: { title, primaryText (Marathi/Devanagari), headline (Marathi/Devana
       if (args.status) data.status = args.status
       if (args.cronExpression) data.cronExpression = args.cronExpression
       if (args.config !== undefined) data.config = typeof args.config === 'string' ? args.config : JSON.stringify(args.config)
-      const job = await db.scheduledJob.update({ where: { id: args.jobId as string }, data }) as any
+      const job = await db.scheduledJob.update({ where: { id: args.jobId as string, userId }, data }) as any
       return { success: true, job }
     }
     case 'delete_scheduled_job': {
-      await db.scheduledJob.delete({ where: { id: args.jobId as string } })
+      await db.scheduledJob.delete({ where: { id: args.jobId as string, userId } })
       return { success: true, message: 'Scheduled job deleted' }
     }
 
     // --- Modality: charts -------------------------------------------------
     case 'generate_chart': {
       const spec = await generateChart({
+        userId,
         kind: args.kind as any,
         chartType: args.chartType as any,
         title: args.title as string,

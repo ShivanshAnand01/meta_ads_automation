@@ -219,7 +219,7 @@ export default function ConnectPage() {
                         <p className="text-sm font-medium">{account.name}</p>
                         <p className="text-xs text-muted-foreground">
                           ID: {account.account_id} • {account.currency} •
-                          Spent: ₹{account.amount_spent || '0'}
+                          Spent: ₹{Number(account.amount_spent || 0) / 100}
                         </p>
                       </div>
                       <Button

@@ -8,7 +8,7 @@ import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 import { motion } from 'framer-motion'
 import {
-  User, Copy, Eye, EyeOff, ShieldCheck, ShieldAlert, Loader2,
+  User, Copy, ShieldCheck, ShieldAlert, Loader2,
   CheckCircle2, XCircle, Key, Server, Cpu, Sparkles, Link2,
   RefreshCw, Activity, Fingerprint, Clock,
 } from 'lucide-react'
@@ -100,11 +100,10 @@ export default function ProfilePage() {
   const [data, setData] = useState<ProfileData | null>(null)
   const [loading, setLoading] = useState(true)
   const [testing, setTesting] = useState(false)
-  const [revealed, setRevealed] = useState(false)
 
-  const fetchProfile = useCallback(async (reveal: boolean) => {
+  const fetchProfile = useCallback(async () => {
     try {
-      const res = await fetch(`/api/profile${reveal ? '?reveal=1' : ''}`)
+      const res = await fetch('/api/profile')
       const json = await res.json()
       setData(json)
     } catch {
@@ -116,15 +115,8 @@ export default function ProfilePage() {
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchProfile(false)
+    fetchProfile()
   }, [fetchProfile])
-
-  async function toggleReveal() {
-    const next = !revealed
-    setRevealed(next)
-    await fetchProfile(next)
-    if (next) toast.success('Secrets revealed')
-  }
 
   async function testConnection() {
     setTesting(true)
@@ -261,26 +253,21 @@ export default function ProfilePage() {
               <div>
                 <div className="mb-2 flex items-center justify-between">
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Credentials</p>
-                  <Button variant="ghost" size="sm" onClick={toggleReveal} className="h-7 text-xs">
-                    {revealed ? <><EyeOff className="mr-1 h-3 w-3" />Hide</> : <><Eye className="mr-1 h-3 w-3" />Reveal secrets</>}
-                  </Button>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <FieldRow label="App ID" value={connection.appId} mono copyable />
-                  <FieldRow label="App Secret" value={connection.appSecret} mono copyable={revealed} />
+                  <FieldRow label="App Secret" value={connection.appSecret} mono copyable={false} />
                   <div className="sm:col-span-2">
-                    <FieldRow label="Access Token" value={connection.accessToken} mono copyable={revealed} />
+                    <FieldRow label="Access Token" value={connection.accessToken} mono copyable={false} />
                   </div>
                   <FieldRow
                     label="Connected Since"
                     value={connection.connectedAt ? new Date(connection.connectedAt).toLocaleString() : 'N/A'}
                   />
                 </div>
-                {!revealed && (
-                  <p className="mt-2 text-[11px] text-muted-foreground">
-                    Secrets are masked for security. Click <strong>Reveal secrets</strong> to view the raw values.
-                  </p>
-                )}
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  Secrets are stored server-side and masked for security.
+                </p>
               </div>
 
               <Separator />
@@ -409,7 +396,7 @@ export default function ProfilePage() {
               <FieldRow label="Provider" value={aiConfig.provider} />
               <FieldRow label="Model" value={aiConfig.model} mono />
               <FieldRow label="Base URL" value={aiConfig.baseUrl} mono />
-              <FieldRow label="API Key" value={aiConfig.apiKey} mono copyable={revealed} />
+              <FieldRow label="API Key" value={aiConfig.apiKey} mono copyable={false} />
             </div>
           ) : (
             <div className="flex flex-col items-center gap-3 py-4 text-center">

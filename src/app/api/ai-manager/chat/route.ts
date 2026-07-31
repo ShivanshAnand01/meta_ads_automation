@@ -11,7 +11,7 @@ import { retrieveRelevantMemory, buildMemoryContext, type EmbedConfig } from '@/
 import { resolveSecrets, SECRET_KEYS } from '@/lib/secrets'
 import { retrieveRelevant } from '@/lib/ai/rag'
 import { getMetaConnection } from '@/lib/meta/user-client'
-import { cancelAllPendingQuestions } from '@/lib/ai/pending-questions'
+import { cancelPendingQuestionsForConversation } from '@/lib/ai/pending-questions'
 
 /**
  * Sanitize loaded chat messages to ensure OpenAI API consistency:
@@ -104,7 +104,7 @@ export async function POST(request: Request) {
     }
 
     let conversation = conversationId
-      ? (await db.aiConversation.findUnique({ where: { id: conversationId } }) as { id: string } | null)
+      ? (await db.aiConversation.findUnique({ where: { id: conversationId, userId } }) as { id: string } | null)
       : null
 
     if (!conversation) {
@@ -331,7 +331,7 @@ export async function POST(request: Request) {
           console.error('AI Manager stream error:', error)
           send({ t: 'error', error: error instanceof Error ? error.message : 'Failed to process message' })
         } finally {
-          cancelAllPendingQuestions()
+          cancelPendingQuestionsForConversation(conversation!.id)
           controller.close()
         }
       },

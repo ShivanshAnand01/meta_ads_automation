@@ -94,17 +94,16 @@ type RawConversation = {
 }
 
 const providerInfo = {
-  anthropic: { name: 'Claude (Anthropic)', icon: Sparkles, needsApiKey: true, needsBaseUrl: false, defaultBaseUrl: '', defaultModel: 'claude-sonnet-4-5-20250514' },
+  anthropic: { name: 'Claude (Anthropic)', icon: Sparkles, needsApiKey: true, needsBaseUrl: false, defaultBaseUrl: '', defaultModel: 'claude-3-5-sonnet-20241022' },
   ollama: { name: 'Ollama (Local)', icon: Cpu, needsApiKey: false, needsBaseUrl: true, defaultBaseUrl: 'http://localhost:11434', defaultModel: 'llama3' },
-  openai: { name: 'OpenAI GPT', icon: Key, needsApiKey: true, needsBaseUrl: false, defaultBaseUrl: '', defaultModel: 'gpt-5.4-mini' },
+  openai: { name: 'OpenAI GPT', icon: Key, needsApiKey: true, needsBaseUrl: false, defaultBaseUrl: '', defaultModel: 'gpt-4o-mini' },
   groq: { name: 'Groq', icon: Server, needsApiKey: true, needsBaseUrl: false, defaultBaseUrl: '', defaultModel: 'llama-3.3-70b-versatile' },
 }
 
 const providerModels: Record<string, { value: string; label: string }[]> = {
   anthropic: [
-    { value: 'claude-sonnet-4-5-20250514', label: 'Claude Sonnet 4.5' },
-    { value: 'claude-opus-4-1-20250515', label: 'Claude Opus 4.1' },
     { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
+    { value: 'claude-3-opus-20240229', label: 'Claude 3 Opus' },
     { value: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku' },
   ],
   ollama: [
@@ -114,12 +113,10 @@ const providerModels: Record<string, { value: string; label: string }[]> = {
     { value: 'mistral', label: 'Mistral' },
   ],
   openai: [
-    { value: 'gpt-5.4', label: 'GPT-5.4 (Latest, Most Powerful)' },
-    { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini (Recommended)' },
-    { value: 'gpt-5.4-nano', label: 'GPT-5.4 Nano (Fastest)' },
-    { value: 'gpt-5.1-mini', label: 'GPT-5.1 Mini' },
     { value: 'gpt-4o', label: 'GPT-4o' },
-    { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+    { value: 'gpt-4o-mini', label: 'GPT-4o Mini (Recommended)' },
+    { value: 'gpt-4.1', label: 'GPT-4.1' },
+    { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
   ],
   groq: [
     { value: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B' },

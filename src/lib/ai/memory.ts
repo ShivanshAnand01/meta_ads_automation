@@ -127,7 +127,7 @@ export async function retrieveRelevantMemory(
 }
 
 export async function deleteMemory(userId: string, memoryId: string): Promise<void> {
-  await db.managerMemory.delete({ where: { id: memoryId } })
+  await db.managerMemory.delete({ where: { id: memoryId, userId } })
 }
 
 export function buildMemoryContext(memories: ManagerMemory[]): string {

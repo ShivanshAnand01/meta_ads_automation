@@ -2,6 +2,7 @@ import { db } from '@/lib/db/supabase-db'
 import { requireUserId, handleError } from '@/lib/supabase/server'
 import { normalizeAdAccountId } from '@/lib/meta/user-client'
 import { getLongLivedToken } from '@/lib/meta/oauth'
+import { storeSecret, SECRET_KEYS } from '@/lib/secrets'
 
 const GRAPH_API_VERSION = 'v21.0'
 const BASE_URL = `https://graph.facebook.com/${GRAPH_API_VERSION}`
@@ -71,20 +72,25 @@ export async function POST(request: Request) {
       // Non-fatal — user can select an account later
     }
 
-    const connection = await db.metaConnection.upsert({
+    // Store secrets in Vault when available, otherwise fall back to the
+    // plaintext column (still protected by RLS).
+    const storedAppSecret = await storeSecret(userId, SECRET_KEYS.metaAppSecret, appSecret)
+    const storedAccessToken = await storeSecret(userId, SECRET_KEYS.metaAccessToken, longLivedToken)
+
+    await db.metaConnection.upsert({
       where: { userId },
       update: {
         appId,
-        appSecret,
-        accessToken: longLivedToken,
+        appSecret: storedAppSecret,
+        accessToken: storedAccessToken,
         tokenExpiry,
         ...(adAccountId ? { adAccountId, adAccountName, adAccountStatus, adAccountCurrency } : {}),
       },
       create: {
         userId,
         appId,
-        appSecret,
-        accessToken: longLivedToken,
+        appSecret: storedAppSecret,
+        accessToken: storedAccessToken,
         tokenExpiry,
         ...(adAccountId ? { adAccountId, adAccountName, adAccountStatus, adAccountCurrency } : {}),
       },
@@ -95,9 +101,10 @@ export async function POST(request: Request) {
       connected: true,
       adAccountId,
       adAccountName,
+      adAccountStatus,
+      adAccountCurrency,
       tokenExchanged: longLivedToken !== accessToken,
       tokenExpiry,
-      connection,
     })
   } catch (error) {
     return handleError(error, 'Failed to connect to Meta')

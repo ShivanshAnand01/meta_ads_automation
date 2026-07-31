@@ -185,8 +185,8 @@ async function executeViaMcp(tool: string, args: Record<string, unknown>, userId
   try {
     const mcp = await getMCPClient(userId)
     const mcpArgs = { ...args }
-    const conn = await db.metaConnection.findUnique({ where: { userId } }) as any
-    if (conn?.adAccountId && !mcpArgs.account_id) mcpArgs.account_id = conn.adAccountId
+    const conn = await getMetaConnection(userId)
+    if (conn?.adAccountId && !mcpArgs.account_id) mcpArgs.account_id = `act_${conn.adAccountId}`
     return await mcp.callTool(tool, mcpArgs)
   } catch (e) {
     return {

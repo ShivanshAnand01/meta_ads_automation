@@ -1,5 +1,6 @@
 import { getSupabaseServer } from '@/lib/supabase/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { AsyncLocalStorage } from 'async_hooks'
 
 // Intentionally loose Prisma-compatible proxy: returns `any` so callers can
 // access fields exactly as Prisma returned them.
@@ -33,6 +34,13 @@ function stripUndefined(obj: Record<string, unknown>): Record<string, unknown> {
   return out
 }
 
+function preparePayload(data: Record<string, unknown>): Record<string, unknown> {
+  const payload = mapKeys(stripUndefined(data), camelToSnake)
+  // Never allow callers to override the owning user via the data payload.
+  delete payload.user_id
+  return payload
+}
+
 // Apply a Prisma-like `where` to a Supabase query. Supports `eq` (scalar),
 // `{ in: [...] }`, and `{ not: v }`. Column names are camel→snake mapped.
 function applyWhere(q: any, where: Where): any {
@@ -50,11 +58,12 @@ function applyWhere(q: any, where: Where): any {
   return q
 }
 
-// Service-role override: set by the autonomous runner so background writes
-// bypass RLS while acting as a specific user. Per-invocation only.
-let serviceClientOverride: SupabaseClient | null = null
-export function setSupabaseServiceClient(client: SupabaseClient | null): void {
-  serviceClientOverride = client
+// Service-role override is request-scoped via AsyncLocalStorage so it never
+// leaks across concurrent serverless invocations.
+const serviceClientStorage = new AsyncLocalStorage<SupabaseClient>()
+
+export function withServiceClient<T>(client: SupabaseClient, fn: () => Promise<T>): Promise<T> {
+  return serviceClientStorage.run(client, fn)
 }
 
 type Where = Record<string, unknown>
@@ -71,7 +80,8 @@ type Query = {
 // ---------------------------------------------------------------------------
 function model(table: string) {
   async function client(): Promise<SupabaseClient> {
-    if (serviceClientOverride) return serviceClientOverride
+    const override = serviceClientStorage.getStore()
+    if (override) return override
     return getSupabaseServer()
   }
 
@@ -111,7 +121,7 @@ function model(table: string) {
 
     async create({ data }: { data: Record<string, unknown> }) {
       const supabase = await client()
-      const payload = mapKeys(stripUndefined(data), camelToSnake)
+      const payload = preparePayload(data)
       const { data: row, error } = await supabase
         .from(table)
         .insert(payload)
@@ -123,7 +133,7 @@ function model(table: string) {
 
     async update({ where, data }: { where: Where; data: Record<string, unknown> }) {
       const supabase = await client()
-      const payload = mapKeys(stripUndefined(data), camelToSnake)
+      const payload = preparePayload(data)
       let q = supabase.from(table).update(payload)
       q = applyWhere(q, where)
       const { data: row, error } = await q.select().maybeSingle()
@@ -145,14 +155,14 @@ function model(table: string) {
       q = applyWhere(q, where)
       const { data: existing } = await q.maybeSingle()
       if (existing) {
-        const payload = mapKeys(stripUndefined(update), camelToSnake)
+        const payload = preparePayload(update)
         let u = supabase.from(table).update(payload)
         u = applyWhere(u, where)
         const { data: row, error } = await u.select().maybeSingle()
         if (error) throw new Error(`${table}.upsert.update: ${error.message}`)
         return toCamelRow(row)
       }
-      const payload = mapKeys(stripUndefined(create), camelToSnake)
+      const payload = preparePayload(create)
       const { data: row, error } = await supabase
         .from(table)
         .insert(payload)
@@ -172,7 +182,7 @@ async function applyIncludes(
   rows: Record<string, unknown>[],
   include: Record<string, unknown>
 ): Promise<Record<string, unknown>[]> {
-  const supabase = serviceClientOverride ?? (await getSupabaseServer())
+  const supabase = serviceClientStorage.getStore() ?? (await getSupabaseServer())
 
   // ad_creatives -> campaign
   if (table === 'ad_creatives' && include.campaign) {
@@ -254,6 +264,7 @@ export const db = {
   aiConversation: model('ai_conversations'),
   aiMessage: model('ai_messages'),
   aiNote: model('ai_notes'),
+  aiMessageAttachment: model('ai_message_attachments'),
   metaConnection: model('meta_connections'),
   scheduledJob: model('scheduled_jobs'),
   knowledgeDocument: model('knowledge_documents'),

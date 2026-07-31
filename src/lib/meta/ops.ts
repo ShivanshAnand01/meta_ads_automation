@@ -104,7 +104,12 @@ export async function metaValidateToken(userId: string) {
   if (blocker) return { error: blocker }
   const client = await getMetaClientForUser(userId)
   const res = await client.verifyToken()
-  return { valid: res.valid, userId: res.userId, expiresIn: res.expiresIn }
+  return {
+    valid: res.valid,
+    userId: res.userId,
+    expiresAt: res.expiresAt,
+    expiresIn: res.expiresAt ? Math.max(0, res.expiresAt - Math.floor(Date.now() / 1000)) : undefined,
+  }
 }
 
 export async function metaCreateAdCreative(

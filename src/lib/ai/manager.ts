@@ -411,12 +411,14 @@ export class AIManager {
     options?: ImageGenOptions,
   ): Promise<ImageGenResult> {
     this.ensureInitialized()
-    const result = await generateAdImage(
-      this.localCtx!.providerType || 'openai',
-      this.localCtx!.apiKey,
-      prompt,
-      options,
-    )
+    // Image generation always uses OpenAI's GPT-image-1 (or DALL-E) regardless
+    // of the active chat provider. Use the OpenAI key when the active provider is
+    // OpenAI; otherwise fall back to the dedicated embedding/image key.
+    const imageApiKey =
+      this.localCtx!.providerType === 'openai'
+        ? this.localCtx!.apiKey
+        : this.localCtx!.embeddingKey || this.localCtx!.apiKey
+    const result = await generateAdImage('openai', imageApiKey, prompt, options)
 
     if (result.success && result.imageUrl) {
       // Persist to Supabase storage for a stable public URL
@@ -456,7 +458,7 @@ export class AIManager {
     this.ensureInitialized()
 
     const { product, angle = 'benefit-driven', callToAction: cta = 'LEARN_MORE',
-            campaignId = null, imagePromptArg = '', imageOptions } = params as any
+            campaignId = null, imagePrompt = '', imageOptions } = params
 
     // 1. Generate Marathi ad copy via the provider
     let copy: { title: string; description: string; primaryText: string; headline: string; callToAction: string } = {
@@ -475,8 +477,8 @@ export class AIManager {
     } catch {}
 
     // 2. Generate the ad image via the enhanced image generator
-    const imagePrompt = imagePromptArg || `${product}, ${angle} marketing theme, professional digital ad creative, Marathi Indian audience, high quality, clean modern design, vibrant colors`
-    const imgResult = await this.generateImage(imagePrompt, imageOptions)
+    const finalImagePrompt = imagePrompt || `${product}, ${angle} marketing theme, professional digital ad creative, Marathi Indian audience, high quality, clean modern design, vibrant colors`
+    const imgResult = await this.generateImage(finalImagePrompt, imageOptions)
 
     const imageUrl: string | null = imgResult.success && imgResult.imageUrl ? imgResult.imageUrl : null
 

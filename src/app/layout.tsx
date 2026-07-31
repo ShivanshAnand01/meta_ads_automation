@@ -45,7 +45,8 @@ export default async function RootLayout({
 }>) {
   const headerStore = await headers();
   const pathname = headerStore.get("x-pathname") ?? "";
-  const showSidebar = pathname !== "/login" && !pathname.startsWith("/auth/");
+  const publicPages = new Set(["/login", "/reset-password", "/auth/callback"]);
+  const showSidebar = pathname ? !publicPages.has(pathname) && !pathname.startsWith("/auth/") : true;
 
   return (
     <html

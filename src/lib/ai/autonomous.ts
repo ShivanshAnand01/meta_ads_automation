@@ -6,6 +6,7 @@ import { buildMemoryContext } from '@/lib/ai/memory'
 import { getRecentMemory } from '@/lib/ai/memory'
 import { getMetaConnection } from '@/lib/meta/user-client'
 import { runReflection } from '@/lib/ai/reflection'
+import { CronExpressionParser } from 'cron-parser'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -67,7 +68,13 @@ export async function runRoutine(params: {
   // Reflection is a specialized engine, not a free-form agent conversation.
   if (routine === 'reflection') {
     const r = await runReflection({ userId })
-    if (jobId) await db.scheduledJob.update({ where: { id: jobId }, data: { lastRunAt: new Date(), nextRunAt: nextCronRun() } }).catch(() => {})
+    if (jobId) {
+      const job = await db.scheduledJob.findUnique({ where: { id: jobId } }).catch(() => null)
+      await db.scheduledJob.update({
+        where: { id: jobId },
+        data: { lastRunAt: new Date(), nextRunAt: nextCronRun((job as any)?.cronExpression as string | undefined) },
+      }).catch(() => {})
+    }
     return { success: r.success, conversationId: '', response: r.message, toolCalls: 0, message: r.message, error: r.error }
   }
 
@@ -150,7 +157,8 @@ export async function runRoutine(params: {
     )
 
     if (jobId) {
-      const next = nextCronRun()
+      const job = await db.scheduledJob.findUnique({ where: { id: jobId } }).catch(() => null)
+      const next = nextCronRun((job as any)?.cronExpression as string | undefined)
       await db.scheduledJob.update({ where: { id: jobId }, data: { lastRunAt: new Date(), nextRunAt: next } }).catch(() => {})
     }
 
@@ -169,7 +177,14 @@ export async function runRoutine(params: {
   }
 }
 
-function nextCronRun(): Date {
+function nextCronRun(cronExpression?: string): Date {
+  if (cronExpression) {
+    try {
+      return CronExpressionParser.parse(cronExpression).next().toDate()
+    } catch {
+      // fall through to a safe default
+    }
+  }
   const d = new Date()
   d.setDate(d.getDate() + 1)
   return d

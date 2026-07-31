@@ -32,7 +32,11 @@ export class MetaApiClient {
     Object.entries(params).forEach(([key, value]) => {
       url.searchParams.append(key, value)
     })
-    url.searchParams.append('access_token', this.accessToken)
+    // Only append the user's access token if the caller has not supplied one
+    // (e.g. /debug_token needs the app token instead).
+    if (!params.access_token) {
+      url.searchParams.append('access_token', this.accessToken)
+    }
 
     const response = await fetch(url.toString(), {
       ...options,
@@ -53,9 +57,9 @@ export class MetaApiClient {
     return data as T
   }
 
-  async verifyToken(): Promise<{ valid: boolean; userId?: string; expiresIn?: number }> {
+  async verifyToken(): Promise<{ valid: boolean; userId?: string; expiresAt?: number }> {
     try {
-      const data = await this.makeRequest<{ data: { user_id: string; expires_at: number }[] }>(
+      const data = await this.makeRequest<{ data: { user_id: string; expires_at: number; is_valid: boolean } }>(
         '/debug_token',
         {},
         {
@@ -64,9 +68,9 @@ export class MetaApiClient {
         }
       )
       return {
-        valid: true,
-        userId: data.data[0]?.user_id,
-        expiresIn: data.data[0]?.expires_at,
+        valid: data.data?.is_valid ?? false,
+        userId: data.data?.user_id,
+        expiresAt: data.data?.expires_at,
       }
     } catch {
       return { valid: false }
@@ -111,12 +115,12 @@ export class MetaApiClient {
       name: campaign.name,
       objective: campaign.objective,
       status: campaign.status,
-      daily_budget: campaign.dailyBudget ? Math.round(campaign.dailyBudget * 100) : undefined,
-      lifetime_budget: campaign.lifetimeBudget ? Math.round(campaign.lifetimeBudget * 100) : undefined,
+      daily_budget: campaign.dailyBudget ? Math.round(Number(campaign.dailyBudget.toFixed(2)) * 100) : undefined,
+      lifetime_budget: campaign.lifetimeBudget ? Math.round(Number(campaign.lifetimeBudget.toFixed(2)) * 100) : undefined,
       start_time: campaign.startTime,
       stop_time: campaign.endTime,
       buying_type: campaign.buyingType || 'AUCTION',
-      special_ad_categories: '[]',
+      special_ad_categories: [],
     }
 
     const data = await this.makeRequest<{ id: string }>(
@@ -138,8 +142,10 @@ export class MetaApiClient {
   }
 
   async deleteCampaign(campaignId: string): Promise<{ success: boolean }> {
+    // Meta does not support DELETE on campaigns; mark as DELETED via POST.
     const data = await this.makeRequest<{ success: boolean }>(`/${campaignId}`, {
-      method: 'DELETE',
+      method: 'POST',
+      body: JSON.stringify({ status: 'DELETED' }),
     })
     return data
   }
@@ -156,6 +162,25 @@ export class MetaApiClient {
     return data.data
   }
 
+  async uploadImage(imageUrl: string): Promise<{ hash: string; url?: string }> {
+    if (!this.adAccountId) throw new Error('Ad account ID not set')
+    const imageRes = await fetch(imageUrl)
+    if (!imageRes.ok) throw new Error(`Failed to fetch image: ${imageRes.status}`)
+    const buffer = Buffer.from(await imageRes.arrayBuffer())
+    const base64 = buffer.toString('base64')
+    const filename = `creative_${Date.now()}.png`
+
+    const data = await this.makeRequest<{
+      images?: Record<string, { hash: string; url?: string }>
+    }>(`/act_${this.adAccountId}/adimages`, {
+      method: 'POST',
+      body: JSON.stringify({ bytes: base64, filename }),
+    })
+    const first = data.images ? Object.values(data.images)[0] : null
+    if (!first?.hash) throw new Error('Meta did not return an image hash')
+    return { hash: first.hash, url: first.url }
+  }
+
   async createAdCreative(creative: {
     name: string
     body: string
@@ -163,21 +188,34 @@ export class MetaApiClient {
     imageUrl?: string
     link: string
     callToAction: string
-  }): Promise<{ id: string }> {
+  }): Promise<{ id: string; imageHash?: string }> {
     if (!this.adAccountId) throw new Error('Ad account ID not set')
-    const body = {
+
+    let imageHash: string | undefined
+    if (creative.imageUrl) {
+      const uploaded = await this.uploadImage(creative.imageUrl)
+      imageHash = uploaded.hash
+    }
+
+    const body: Record<string, unknown> = {
       name: creative.name,
       object_story_spec: {
         link_data: {
           message: creative.body,
-          picture: creative.imageUrl,
           link: creative.link,
           name: creative.title,
-          call_to_action: {
-            type: creative.callToAction,
-          },
+          call_to_action: { type: creative.callToAction },
         },
       },
+    }
+    if (imageHash) {
+      body.object_story_spec = {
+        ...(body.object_story_spec as Record<string, unknown>),
+        link_data: {
+          ...((body.object_story_spec as Record<string, unknown>).link_data as Record<string, unknown>),
+          picture: imageHash,
+        },
+      }
     }
 
     const data = await this.makeRequest<{ id: string }>(
@@ -187,7 +225,7 @@ export class MetaApiClient {
         body: JSON.stringify(body),
       }
     )
-    return data
+    return { id: data.id, imageHash }
   }
 
   async getInsights(

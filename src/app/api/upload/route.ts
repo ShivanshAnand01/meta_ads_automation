@@ -18,13 +18,25 @@ const ALLOWED_DOC_TYPES = [
   'application/json',
 ]
 
+const ALLOWED_BUCKETS = new Set([
+  'chat-attachments',
+  'ad-creative-images',
+  'knowledge-documents',
+  'voice-clips',
+])
+
+function sanitizeFileName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.+/g, '.').slice(0, 120)
+}
+
 export async function POST(request: Request) {
   try {
     const userId = await requireUserId()
 
     const formData = await request.formData()
     const file = formData.get('file') as File | null
-    const bucket = (formData.get('bucket') as string) || 'chat-attachments'
+    const rawBucket = (formData.get('bucket') as string) || 'chat-attachments'
+    const bucket = ALLOWED_BUCKETS.has(rawBucket) ? rawBucket : 'chat-attachments'
 
     if (!file) {
       return Response.json({ error: 'No file provided' }, { status: 400 })
@@ -43,8 +55,10 @@ export async function POST(request: Request) {
       )
     }
 
-    const ext = file.name.split('.').pop() || 'bin'
-    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+    const safeBase = sanitizeFileName(file.name.split('/').pop() || 'upload')
+    const ext = safeBase.split('.').pop() || 'bin'
+    const base = safeBase.replace(/\.[^.]+$/, '') || 'file'
+    const fileName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${base.slice(0, 60)}.${ext}`
     const filePath = `${userId}/${fileName}`
 
     const supabase = await getSupabaseServer()

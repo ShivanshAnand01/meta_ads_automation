@@ -20,7 +20,6 @@ export async function GET(request: Request) {
     const user = await getSessionUser()
     const { searchParams } = new URL(request.url)
     const test = searchParams.get('test') === '1'
-    const reveal = searchParams.get('reveal') === '1'
 
     const userInfo = user
       ? {
@@ -40,8 +39,8 @@ export async function GET(request: Request) {
       ? {
           connected: true,
           appId: conn.appId,
-          appSecret: reveal ? conn.appSecret : mask(conn.appSecret),
-          accessToken: reveal ? conn.accessToken : mask(conn.accessToken),
+          appSecret: mask(conn.appSecret),
+          accessToken: mask(conn.accessToken),
           adAccountId: conn.adAccountId ? `act_${conn.adAccountId}` : null,
           adAccountIdRaw: conn.adAccountId,
           adAccountName: conn.adAccountName,
@@ -72,7 +71,7 @@ export async function GET(request: Request) {
           provider: aiSettings.provider,
           model: aiSettings.model,
           baseUrl: aiSettings.baseUrl,
-          apiKey: reveal ? aiSettings.apiKey : mask(aiSettings.apiKey),
+          apiKey: mask(aiSettings.apiKey),
         }
       : { configured: false, provider: null, model: null, baseUrl: null, apiKey: null }
 

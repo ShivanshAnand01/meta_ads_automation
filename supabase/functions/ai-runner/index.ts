@@ -3,22 +3,23 @@
 // Schedule in the dashboard (Database → Cron) or with `supabase functions schedule`.
 //
 // Env (set via `supabase secrets set`):
-//   APP_URL            e.g. https://your-app.vercel.app
-//   SUPABASE_SERVICE_ROLE_KEY  (same as the app's service role key)
+//   APP_URL       e.g. https://your-app.vercel.app
+//   RUNNER_SECRET a long random secret shared with the app
 //
 // The function pings the app's /api/ai-manager/autonomous endpoint for each
 // routine type; the app enumerates users with an active scheduled job of that
 // type and runs the AI manager on their behalf (service-role, bypassing RLS).
+// The Supabase service-role key NEVER leaves the app server.
 
 import { serve } from "https://esm.sh/std@0.168.0/http/server.ts";
 
-const ROUTINES = ["morning_optimization", "budget_pacing", "anomaly_detection", "weekly_report"] as const;
+const ROUTINES = ["morning_optimization", "budget_pacing", "anomaly_detection", "weekly_report", "reflection", "custom"] as const;
 
 serve(async () => {
   const appUrl = Deno.env.get("APP_URL");
-  const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!appUrl || !serviceRole) {
-    return new Response(JSON.stringify({ error: "APP_URL and SUPABASE_SERVICE_ROLE_KEY must be set" }), {
+  const runnerSecret = Deno.env.get("RUNNER_SECRET");
+  if (!appUrl || !runnerSecret) {
+    return new Response(JSON.stringify({ error: "APP_URL and RUNNER_SECRET must be set" }), {
       status: 500, headers: { "Content-Type": "application/json" },
     });
   }
@@ -30,7 +31,7 @@ serve(async () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-service-role": serviceRole,
+          "x-runner-secret": runnerSecret,
         },
         body: JSON.stringify({ routine }),
       });

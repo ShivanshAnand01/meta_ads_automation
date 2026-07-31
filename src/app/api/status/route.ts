@@ -1,13 +1,11 @@
 import { NextResponse } from 'next/server'
-import { createSupabaseServiceClient, validateSupabaseEnv } from '@/lib/supabase/server'
+import {
+  createSupabaseServiceClient,
+  validateSupabaseEnv,
+  requireUserId,
+} from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
-
-function maskKey(key: string | undefined): string {
-  if (!key) return 'missing'
-  if (key.length <= 12) return '••••••••'
-  return `${key.slice(0, 4)}••••••${key.slice(-4)}`
-}
 
 async function tableExists(supabase: ReturnType<typeof createSupabaseServiceClient>, table: string): Promise<boolean> {
   const { error } = await supabase.from(table).select('id').limit(1)
@@ -21,7 +19,7 @@ interface StatusResponse {
   env: {
     NEXT_PUBLIC_SUPABASE_URL: boolean
     NEXT_PUBLIC_SUPABASE_ANON_KEY: boolean
-    SUPABASE_SERVICE_ROLE_KEY: string
+    hasServiceRoleKey: boolean
     DATABASE_URL: boolean
     DIRECT_URL: boolean
     NODE_ENV: string | undefined
@@ -36,6 +34,12 @@ interface StatusResponse {
 }
 
 export async function GET() {
+  try {
+    await requireUserId()
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const envCheck = validateSupabaseEnv()
 
   const status: StatusResponse = {
@@ -46,7 +50,7 @@ export async function GET() {
     env: {
       NEXT_PUBLIC_SUPABASE_URL: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL),
       NEXT_PUBLIC_SUPABASE_ANON_KEY: Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
-      SUPABASE_SERVICE_ROLE_KEY: maskKey(process.env.SUPABASE_SERVICE_ROLE_KEY),
+      hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
       DATABASE_URL: Boolean(process.env.DATABASE_URL),
       DIRECT_URL: Boolean(process.env.DIRECT_URL),
       NODE_ENV: process.env.NODE_ENV,

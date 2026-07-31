@@ -20,10 +20,10 @@ interface DashboardData {
   connected: boolean
   adAccount?: { name: string; accountId: string; currency: string; status: string }
   stats?: {
-    totalSpend: number; totalImpressions: number; totalClicks: number
+    totalSpend: number; totalRevenue: number; totalImpressions: number; totalClicks: number
     totalConversions: number; ctr: number; cpc: number; roas: number
   }
-  performanceData?: { date: string; spend: number; impressions: number; clicks: number }[]
+  performanceData?: { date: string; spend: number; impressions: number; clicks: number; revenue: number }[]
   recentCreatives?: {
     id: string; title: string; status: string; reviewStatus: string
     expectedSpend: number; expectedRoas: number; createdAt: string
@@ -43,14 +43,18 @@ const item = {
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     async function fetchData() {
       try {
         const res = await fetch('/api/dashboard')
         const json = await res.json()
+        if (!res.ok) throw new Error(json.error || 'Failed to load dashboard')
         setData(json)
-      } catch {
+        setError(null)
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to load dashboard')
         setData({ connected: false, aiConfigured: false })
       } finally {
         setLoading(false)
@@ -111,10 +115,11 @@ export default function DashboardPage() {
     )
   }
 
-  const stats = data.stats || { totalSpend: 0, totalImpressions: 0, totalClicks: 0, totalConversions: 0, ctr: 0, cpc: 0, roas: 0 }
+  const stats = data.stats || { totalSpend: 0, totalRevenue: 0, totalImpressions: 0, totalClicks: 0, totalConversions: 0, ctr: 0, cpc: 0, roas: 0 }
 
   const statCards = [
     { label: 'Total Spend', value: `₹${stats.totalSpend.toLocaleString('en-IN')}`, sub: 'All-time ad spend', icon: IndianRupee, gradient: 'from-violet-500 to-purple-500' },
+    { label: 'Total Revenue', value: `₹${stats.totalRevenue.toLocaleString('en-IN')}`, sub: 'Purchase / conversion value', icon: Activity, gradient: 'from-fuchsia-500 to-pink-500' },
     { label: 'Impressions', value: stats.totalImpressions.toLocaleString('en-IN'), sub: 'Total ad views', icon: Eye, gradient: 'from-blue-500 to-cyan-500' },
     { label: 'Clicks', value: stats.totalClicks.toLocaleString('en-IN'), sub: `CTR: ${stats.ctr.toFixed(2)}%`, icon: MousePointerClick, gradient: 'from-emerald-500 to-teal-500' },
     { label: 'ROAS', value: `${stats.roas.toFixed(2)}x`, sub: 'Return on ad spend', icon: stats.roas >= 1 ? TrendingUp : TrendingDown, gradient: stats.roas >= 1 ? 'from-amber-500 to-orange-500' : 'from-red-500 to-rose-500' },
@@ -150,11 +155,21 @@ export default function DashboardPage() {
         </div>
       </motion.div>
 
+      {error && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200"
+        >
+          {error}
+        </motion.div>
+      )}
+
       <motion.div
         variants={container}
         initial="hidden"
         animate="show"
-        className="grid gap-4 md:grid-cols-2 lg:grid-cols-4"
+        className="grid gap-4 md:grid-cols-2 lg:grid-cols-5"
       >
         {statCards.map((stat) => {
           const Icon = stat.icon

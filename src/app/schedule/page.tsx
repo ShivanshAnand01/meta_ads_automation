@@ -30,11 +30,12 @@ interface Campaign {
 }
 
 const jobTypes: Record<string, { label: string; description: string }> = {
-  generate_creatives: { label: 'Generate Ad Creatives', description: 'AI will automatically generate new ad creatives based on past performance' },
-  review_creatives: { label: 'Review Past Creatives', description: 'AI reviews past creatives and suggests improvements' },
-  publish_campaign: { label: 'Publish Campaign', description: 'Publish a scheduled campaign to Meta Ads' },
-  sync_insights: { label: 'Sync Performance Data', description: 'Pull latest performance data from Meta Ads' },
-  budget_alert: { label: 'Budget Alert', description: 'Check budget thresholds and send alerts' },
+  morning_optimization: { label: 'Morning Optimization', description: 'Daily check-in: performance review, budget pacing, and recommended actions' },
+  budget_pacing: { label: 'Budget Pacing', description: 'Hourly budget check to avoid overspend and flag under-performing campaigns' },
+  anomaly_detection: { label: 'Anomaly Detection', description: 'Detect unusual performance shifts and alert you automatically' },
+  weekly_report: { label: 'Weekly Report', description: 'Monday summary of top spenders, winners, losers, and next-week actions' },
+  reflection: { label: 'Reflection & Learning', description: 'Review recent actions and update the manager memory / strategy' },
+  custom: { label: 'Custom', description: 'Run a custom prompt on schedule' },
 }
 
 const cronPresets = [
@@ -53,7 +54,7 @@ export default function SchedulePage() {
   const [showCreate, setShowCreate] = useState(false)
   const [creating, setCreating] = useState(false)
   const [form, setForm] = useState({
-    type: 'generate_creatives',
+    type: 'morning_optimization',
     campaignId: '',
     cronExpression: '0 9 * * *',
   })
@@ -167,7 +168,7 @@ export default function SchedulePage() {
                 </Select>
                 <p className="text-xs text-muted-foreground">{jobTypes[form.type]?.description}</p>
               </div>
-              {(form.type === 'publish_campaign' || form.type === 'budget_alert') && (
+              {form.type === 'custom' && (
                 <div className="space-y-2">
                   <Label>Campaign</Label>
                   <Select value={form.campaignId} onValueChange={(v) => { if (v) setForm({ ...form, campaignId: v }) }}>
@@ -281,11 +282,12 @@ export default function SchedulePage() {
           {Object.entries(jobTypes).map(([key, info]) => (
             <div key={key} className="flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-accent/30">
               <div className="mt-0.5">
-                {key === 'generate_creatives' && <RefreshCw className="h-4 w-4 text-blue-500" />}
-                {key === 'review_creatives' && <CheckCircle2 className="h-4 w-4 text-green-500" />}
-                {key === 'publish_campaign' && <CalendarClock className="h-4 w-4 text-purple-500" />}
-                {key === 'sync_insights' && <Clock className="h-4 w-4 text-orange-500" />}
-                {key === 'budget_alert' && <XCircle className="h-4 w-4 text-red-500" />}
+                {key === 'morning_optimization' && <CalendarClock className="h-4 w-4 text-blue-500" />}
+                {key === 'budget_pacing' && <Clock className="h-4 w-4 text-green-500" />}
+                {key === 'anomaly_detection' && <XCircle className="h-4 w-4 text-orange-500" />}
+                {key === 'weekly_report' && <CheckCircle2 className="h-4 w-4 text-purple-500" />}
+                {key === 'reflection' && <RefreshCw className="h-4 w-4 text-cyan-500" />}
+                {key === 'custom' && <CalendarClock className="h-4 w-4 text-red-500" />}
               </div>
               <div>
                 <p className="text-sm font-medium">{info.label}</p>

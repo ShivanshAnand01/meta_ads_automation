@@ -36,7 +36,7 @@ Actual Performance:
 - Conversions: ${performance.conversions}
 - Spend: ₹${performance.spend}
 - CTR: ${performance.impressions ? ((performance.clicks / performance.impressions) * 100).toFixed(2) : 0}%
-- Actual ROAS: ${performance.spend ? ((performance.conversions * 100) / performance.spend).toFixed(2) : 'N/A'}
+- Actual ROAS: ${creative.actualRoas != null ? creative.actualRoas.toFixed(2) : 'N/A'}x
 ` : ''}
 
 Provide a comprehensive review with a score (0-100), strengths, weaknesses, and actionable suggestions.
@@ -71,7 +71,7 @@ export async function generatePerformanceReport(
 
 Total Spend: ₹${totalSpend}
 Total Conversions: ${totalConversions}
-Overall ROAS: ${totalSpend ? (totalConversions * 100 / totalSpend).toFixed(2) : 0}
+${creatives.some((c) => c.actualRoas != null) ? `Overall ROAS: ${(creatives.reduce((sum, c) => sum + (c.actualRoas || 0), 0) / (creatives.length || 1)).toFixed(2)}x (average)` : 'Overall ROAS: N/A (no revenue tracked)'}
 
 Individual Creative Performance:
 ${creativesSummary}

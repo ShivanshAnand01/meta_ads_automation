@@ -14,10 +14,21 @@ import { Brain, Loader2, Mail, Lock, ArrowLeft } from 'lucide-react'
 
 type AuthMode = 'signin' | 'signup' | 'reset'
 
+function safeNext(v: string | null): string {
+  if (!v) return '/'
+  try {
+    const u = new URL(v, window.location.origin)
+    if (u.origin !== window.location.origin) return '/'
+    return `${u.pathname}${u.search}${u.hash}` || '/'
+  } catch {
+    return '/'
+  }
+}
+
 export default function LoginPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const next = searchParams.get('next') || '/'
+  const next = safeNext(searchParams.get('next'))
 
   const [mode, setMode] = useState<AuthMode>('signin')
   const [email, setEmail] = useState('')

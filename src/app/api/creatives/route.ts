@@ -1,6 +1,12 @@
 import { db } from '@/lib/db/supabase-db'
 import { requireUserId, handleError } from '@/lib/supabase/server'
 
+async function validateCampaignOwnership(campaignId: unknown, userId: string): Promise<boolean> {
+  if (campaignId === undefined || campaignId === null) return true
+  const campaign = await db.campaign.findUnique({ where: { id: campaignId as string, userId } })
+  return campaign != null
+}
+
 export async function GET() {
   try {
     const userId = await requireUserId()
@@ -21,6 +27,10 @@ export async function POST(request: Request) {
   try {
     const userId = await requireUserId()
     const body = await request.json()
+
+    if (body.campaignId && !(await validateCampaignOwnership(body.campaignId, userId))) {
+      return Response.json({ error: 'Campaign not found' }, { status: 404 })
+    }
 
     const creative = await db.adCreative.create({
       data: {

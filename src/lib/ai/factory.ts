@@ -11,11 +11,11 @@ export function createAIProvider(
   switch (type) {
     case 'anthropic':
       if (!config.apiKey) throw new Error('Anthropic API key is required')
-      return new AnthropicProvider(config.apiKey, config.model || 'claude-sonnet-4-5-20250514')
+      return new AnthropicProvider(config.apiKey, config.model || 'claude-3-5-sonnet-20241022')
 
     case 'openai':
       if (!config.apiKey) throw new Error('OpenAI API key is required')
-      return new OpenAIProvider(config.apiKey, config.model || 'gpt-5.4-mini')
+      return new OpenAIProvider(config.apiKey, config.model || 'gpt-4o-mini')
 
     case 'groq':
       if (!config.apiKey) throw new Error('Groq API key is required')
@@ -36,20 +36,16 @@ export function getAvailableModels(type: AIProviderType): { value: string; label
   switch (type) {
     case 'anthropic':
       return [
-        { value: 'claude-sonnet-4-5-20250514', label: 'Claude Sonnet 4.5 (Latest)' },
-        { value: 'claude-opus-4-1-20250515', label: 'Claude Opus 4.1 (Most Powerful)' },
-        { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
-        { value: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku (Fast)' },
+        { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet (Recommended)' },
+        { value: 'claude-3-opus-20240229', label: 'Claude 3 Opus (Most Powerful)' },
+        { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku (Fast)' },
       ]
 
     case 'openai':
       return [
-        { value: 'gpt-5.4', label: 'GPT-5.4 (Latest, Most Powerful)' },
-        { value: 'gpt-5.4-mini', label: 'GPT-5.4 Mini (Recommended)' },
-        { value: 'gpt-5.4-nano', label: 'GPT-5.4 Nano (Fastest)' },
-        { value: 'gpt-5.1-mini', label: 'GPT-5.1 Mini' },
-        { value: 'gpt-4o', label: 'GPT-4o' },
-        { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+        { value: 'gpt-4o', label: 'GPT-4o (Most Powerful)' },
+        { value: 'gpt-4o-mini', label: 'GPT-4o Mini (Recommended)' },
+        { value: 'o1-mini', label: 'o1 Mini (Reasoning)' },
       ]
 
     case 'groq':

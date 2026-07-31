@@ -19,6 +19,7 @@ function num(v: unknown): number {
 }
 
 export async function generateChart(params: {
+  userId: string
   kind?: 'spend_trend' | 'funnel' | 'roas_by_campaign' | 'performance_compare' | 'custom'
   chartType?: ChartSpec['chartType']
   title?: string
@@ -38,6 +39,7 @@ export async function generateChart(params: {
     const { data } = await supabase
       .from('daily_metrics')
       .select('date, spend, impressions, clicks, conversions')
+      .eq('user_id', params.userId)
       .gte('date', since.toISOString().split('T')[0])
       .order('date', { ascending: true })
 
@@ -64,7 +66,7 @@ export async function generateChart(params: {
   }
 
   if (kind === 'funnel') {
-    const campaigns = await db.campaign.findMany({}) as any[]
+    const campaigns = await db.campaign.findMany({ where: { userId: params.userId } }) as any[]
     const impressions = campaigns.reduce((s, c) => s + num(c.totalImpressions), 0)
     const clicks = campaigns.reduce((s, c) => s + num(c.totalClicks), 0)
     const conversions = campaigns.reduce((s, c) => s + num(c.totalConversions), 0)
@@ -84,8 +86,9 @@ export async function generateChart(params: {
   }
 
   if (kind === 'roas_by_campaign' || kind === 'performance_compare') {
-    const where = params.campaignIds?.length ? { id: { in: params.campaignIds } } : {}
-    const campaigns = await db.campaign.findMany({ where: where as any }) as any[]
+    const where: Record<string, unknown> = { userId: params.userId }
+    if (params.campaignIds?.length) where.id = { in: params.campaignIds }
+    const campaigns = await db.campaign.findMany({ where }) as any[]
     const data = campaigns.map((c) => ({
       name: c.name,
       spend: num(c.totalSpend),

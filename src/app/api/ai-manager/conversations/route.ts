@@ -26,7 +26,7 @@ export async function GET() {
 
 export async function DELETE(request: Request) {
   try {
-    await requireUserId()
+    const userId = await requireUserId()
     const { searchParams } = new URL(request.url)
     const conversationId = searchParams.get('id')
 
@@ -34,7 +34,12 @@ export async function DELETE(request: Request) {
       return Response.json({ error: 'Conversation ID required' }, { status: 400 })
     }
 
-    await db.aiConversation.delete({ where: { id: conversationId } })
+    const existing = await db.aiConversation.findUnique({ where: { id: conversationId, userId } })
+    if (!existing) {
+      return Response.json({ error: 'Conversation not found' }, { status: 404 })
+    }
+
+    await db.aiConversation.delete({ where: { id: conversationId, userId } })
 
     return Response.json({ success: true })
   } catch (error) {

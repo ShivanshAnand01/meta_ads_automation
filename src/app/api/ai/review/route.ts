@@ -2,6 +2,7 @@ import { db } from '@/lib/db/supabase-db'
 import { requireUserId, handleError } from '@/lib/supabase/server'
 import { createAIProvider } from '@/lib/ai/factory'
 import { reviewCreative } from '@/lib/ai/creative-reviewer'
+import { resolveSecrets, SECRET_KEYS } from '@/lib/secrets'
 import type { AIProviderType } from '@/lib/ai/types'
 import type { AdCreativeData } from '@/lib/meta/types'
 
@@ -10,16 +11,20 @@ export async function POST(request: Request) {
     const userId = await requireUserId()
     const body = await request.json()
 
-    const settings = await db.aiSettings.findUnique({ where: { userId } }) as
+    const rawSettings = await db.aiSettings.findUnique({ where: { userId } }) as
       | { provider: string; apiKey: string | null; model: string; baseUrl: string | null }
       | null
 
-    if (!settings) {
+    if (!rawSettings) {
       return Response.json(
         { error: 'AI not configured' },
         { status: 400 }
       )
     }
+
+    const settings = await resolveSecrets(rawSettings, [
+      { column: 'apiKey', vaultKey: SECRET_KEYS.aiApiKey },
+    ])
 
     const provider = createAIProvider(settings.provider as AIProviderType, {
       apiKey: settings.apiKey || undefined,
@@ -37,7 +42,7 @@ export async function POST(request: Request) {
 
     if (body.creativeId) {
       const creative = await db.adCreative.findUnique({
-        where: { id: body.creativeId as string },
+        where: { id: body.creativeId as string, userId },
       }) as Record<string, unknown> | null
 
       if (!creative) {
@@ -81,7 +86,7 @@ export async function POST(request: Request) {
 
     if (body.creativeId) {
       await db.adCreative.update({
-        where: { id: body.creativeId as string },
+        where: { id: body.creativeId as string, userId },
         data: {
           reviewStatus: 'verified',
           reviewNotes: `Score: ${review.score}/100`,

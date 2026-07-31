@@ -1,8 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Standalone output keeps the production image small and portable.
-  output: "standalone",
+  // Standalone output is useful for Docker/self-hosting; on Vercel keep the
+  // default build output so the platform can optimize the bundle.
+  output: process.env.VERCEL ? undefined : "standalone",
 
   // Disable the X-Powered-By header for a cleaner, more secure response.
   poweredByHeader: false,

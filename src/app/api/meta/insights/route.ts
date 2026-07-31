@@ -1,38 +1,25 @@
 import { type NextRequest } from 'next/server'
-import { db } from '@/lib/db/supabase-db'
 import { requireUserId, handleError } from '@/lib/supabase/server'
 import { getMCPClient } from '@/lib/meta/mcp-client'
-import { normalizeAdAccountId } from '@/lib/meta/user-client'
-
-const DATE_PRESET_MAP: Record<string, string> = {
-  last_30d: 'last_month',
-  last_7d: 'last_week',
-  last_90d: 'last_quarter',
-  last_3d: 'last_week',
-  maximum: 'lifetime',
-  data_maximum: 'lifetime',
-}
+import { getMetaConnection, normalizeAdAccountId } from '@/lib/meta/user-client'
 
 const VALID_PRESETS = new Set([
   'today', 'yesterday', 'this_week', 'last_week',
   'this_month', 'last_month', 'this_quarter', 'last_quarter',
-  'this_year', 'last_year', 'lifetime',
+  'this_year', 'last_year', 'lifetime', 'maximum',
+  'last_3d', 'last_7d', 'last_30d', 'last_90d',
 ])
 
 function mapDatePreset(preset: string): string {
-  if (DATE_PRESET_MAP[preset]) return DATE_PRESET_MAP[preset]
   if (VALID_PRESETS.has(preset)) return preset
-  return 'last_month'
+  return 'last_30d'
 }
 
 export async function GET(request: NextRequest) {
   try {
     const userId = await requireUserId()
 
-    const conn = await db.metaConnection.findUnique({
-      where: { userId },
-    }) as { adAccountId: string | null } | null
-
+    const conn = await getMetaConnection(userId)
     if (!conn) {
       return Response.json(
         { error: 'Not connected to Meta' },
@@ -50,7 +37,7 @@ export async function GET(request: NextRequest) {
     const rawDatePreset = request.nextUrl.searchParams.get('datePreset') || 'last_30d'
     const datePreset = mapDatePreset(rawDatePreset)
 
-    const mcp = await getMCPClient()
+    const mcp = await getMCPClient(userId)
     const result = await mcp.callTool('get_insights', {
       object_id: `act_${normalizeAdAccountId(conn.adAccountId)}`,
       level,
