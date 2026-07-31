@@ -36,8 +36,9 @@ function stripUndefined(obj: Record<string, unknown>): Record<string, unknown> {
 
 function preparePayload(data: Record<string, unknown>): Record<string, unknown> {
   const payload = mapKeys(stripUndefined(data), camelToSnake)
-  // Never allow callers to override the owning user via the data payload.
-  delete payload.user_id
+  // The server-side callers are responsible for supplying the correct userId
+  // (taken from the authenticated session). We keep it in the payload so
+  // owner-table inserts satisfy RLS and not-null constraints.
   return payload
 }
 
