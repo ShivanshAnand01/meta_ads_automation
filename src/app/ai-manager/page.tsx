@@ -57,6 +57,11 @@ interface Note {
   createdAt: string
 }
 
+function displayUserContent(content: string): string {
+  const idx = content.indexOf('\n\n[Attached:')
+  return idx > 0 ? content.slice(0, idx) : content
+}
+
 interface Conversation {
   id: string
   title: string
@@ -764,8 +769,26 @@ export default function AIManagerPage() {
 
                       <div className={`max-w-[85%] ${msg.role === 'user' ? 'order-first' : ''}`}>
                         {msg.role === 'user' ? (
-                          <div className="rounded-2xl gradient-bg animate-gradient px-4 py-2.5 text-sm text-white shadow-md">
-                            <p className="whitespace-pre-wrap">{msg.content}</p>
+                          <div className="flex flex-col items-end gap-2">
+                            <div className="rounded-2xl gradient-bg animate-gradient px-4 py-2.5 text-sm text-white shadow-md">
+                              <p className="whitespace-pre-wrap">{displayUserContent(msg.content)}</p>
+                            </div>
+                            {msg.attachments && msg.attachments.length > 0 && (
+                              <div className="flex flex-wrap gap-2 justify-end">
+                                {msg.attachments.map((att, j) => (
+                                  <div key={j} className="relative rounded-lg overflow-hidden border border-white/20">
+                                    {att.type.startsWith('image/') ? (
+                                      <Image src={att.url} alt={att.name} width={64} height={64} className="h-16 w-16 object-cover" />
+                                    ) : (
+                                      <div className="flex items-center gap-2 rounded-lg bg-background/50 p-2 h-16 w-32">
+                                        <Paperclip className="h-4 w-4 text-muted-foreground shrink-0" />
+                                        <span className="text-xs text-muted-foreground truncate">{att.name}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="space-y-3">
@@ -812,23 +835,6 @@ export default function AIManagerPage() {
                               <ThinkingIndicator phase={msg.thinkingPhase} compact />
                             )}
 
-                            {/* User attachments */}
-                            {msg.attachments && msg.attachments.length > 0 && (
-                              <div className="flex flex-wrap gap-2">
-                                {msg.attachments.map((att, j) => (
-                                  <div key={j} className="relative rounded-lg overflow-hidden border border-border/30">
-                                    {att.type.startsWith('image/') ? (
-                                      <Image src={att.url} alt={att.name} width={96} height={96} className="h-24 w-24 object-cover" />
-                                    ) : (
-                                      <div className="flex items-center gap-2 rounded-lg bg-background/50 p-2 h-24 w-24">
-                                        <Paperclip className="h-4 w-4 text-muted-foreground" />
-                                        <span className="text-xs text-muted-foreground truncate">{att.name}</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
                           </div>
                         )}
                       </div>
