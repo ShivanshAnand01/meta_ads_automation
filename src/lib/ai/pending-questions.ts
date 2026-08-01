@@ -93,7 +93,6 @@ export async function createPendingQuestion(
 }
 
 export async function resolvePendingQuestion(
-  conversationId: string,
   id: string,
   answer: string
 ): Promise<boolean> {
@@ -102,7 +101,6 @@ export async function resolvePendingQuestion(
     .from('pending_questions')
     .update({ status: 'answered', answer })
     .eq('id', id)
-    .eq('conversation_id', conversationId)
     .eq('status', 'pending')
     .select('id')
     .single()
@@ -119,7 +117,6 @@ export async function cancelPendingQuestion(
     .from('pending_questions')
     .update({ status: 'cancelled' })
     .eq('id', id)
-    .eq('conversation_id', conversationId)
     .eq('status', 'pending')
 }
 
@@ -159,6 +156,24 @@ export async function getQuestionMetadata(
     .select('*')
     .eq('id', id)
     .eq('conversation_id', conversationId)
+    .single()
+  if (error || !data) return null
+  const row = data as unknown as PendingQuestionRow
+  return {
+    userId: row.user_id,
+    conversationId: row.conversation_id,
+    question: row.question,
+  }
+}
+
+export async function getQuestionMetadataById(
+  id: string
+): Promise<{ userId: string; conversationId: string; question: string } | null> {
+  const supabase = await getSupabaseServer()
+  const { data, error } = await supabase
+    .from('pending_questions')
+    .select('*')
+    .eq('id', id)
     .single()
   if (error || !data) return null
   const row = data as unknown as PendingQuestionRow
