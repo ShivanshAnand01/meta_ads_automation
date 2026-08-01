@@ -22,6 +22,32 @@ import { cancelPendingQuestionsForConversation } from '@/lib/ai/pending-question
  * "An assistant message with 'tool_calls' must be followed by tool messages
  * responding to each 'tool_call_id'."
  */
+async function buildAttachmentText(
+  attachments: Array<{ url: string; type: string; name: string; documentId?: string }>
+): Promise<string> {
+  const docAttachments = attachments.filter((a) => a.documentId)
+  if (docAttachments.length === 0) return ''
+
+  const supabase = await getSupabaseServer()
+  const ids = docAttachments.map((a) => a.documentId!)
+  const { data: docs } = await supabase
+    .from('knowledge_documents')
+    .select('id, title, content')
+    .in('id', ids)
+
+  if (!docs || docs.length === 0) return ''
+
+  let text = ''
+  for (const att of docAttachments) {
+    const doc = docs.find((d) => d.id === att.documentId)
+    if (!doc?.content) continue
+    text += `\n\n--- Attached document: ${att.name} ---\n${doc.content}`
+  }
+
+  // Cap the inline text so the chat message doesn’t explode token limits.
+  return text.slice(0, 20000)
+}
+
 function sanitizeMessages(messages: ChatMessage[]): ChatMessage[] {
   // Collect all tool_call_ids that have tool message responses
   const toolResponseIds = new Set<string>()
@@ -113,13 +139,17 @@ export async function POST(request: Request) {
       }) as { id: string })
     }
 
+    // Build inline content from document attachments so the model receives
+    // the file text inside the user message (like ChatGPT).
+    const attachmentText = attachments?.length ? await buildAttachmentText(attachments) : ''
+
     // Persist the user message
     let userMessageContent = message
     if (attachments && attachments.length > 0) {
       const attachmentInfo = attachments
         .map((a) => `[Attached: ${a.name} (${a.type}) — ${a.url}]`)
         .join('\n')
-      userMessageContent = `${message}\n\n${attachmentInfo}`
+      userMessageContent = `${message}\n\n${attachmentInfo}${attachmentText}`
     }
     await db.aiMessage.create({
       data: { conversationId: conversation.id, role: 'user', content: userMessageContent },
@@ -213,31 +243,6 @@ export async function POST(request: Request) {
       }
     } catch {}
 
-    // Build context from PDF/text attachments that were vectorised during upload.
-    let attachmentContext = ''
-    try {
-      const docAttachments = attachments?.filter((a) => a.documentId) ?? []
-      if (docAttachments.length > 0) {
-        const supabase = await getSupabaseServer()
-        const ids = docAttachments.map((a) => a.documentId!)
-        const { data: chunks } = await supabase
-          .from('knowledge_chunks')
-          .select('document_id, content, chunk_index')
-          .in('document_id', ids)
-          .order('chunk_index')
-
-        if (chunks && chunks.length > 0) {
-          const namesByDoc = new Map(docAttachments.map((a) => [a.documentId, a.name]))
-          let text = `ATTACHED DOCUMENTS: ${docAttachments.map((a) => a.name).join(', ')}\n\n`
-          text += chunks
-            .map((c) => `[From ${namesByDoc.get(c.document_id)}]\n${c.content}`)
-            .join('\n\n')
-          // Keep context from exploding for very large PDFs.
-          attachmentContext = `\n\n${text.slice(0, 12000)}`
-        }
-      }
-    } catch {}
-
     const localCampaigns = await db.campaign.findMany({ where: { userId } }) as unknown[]
     const localCreatives = await db.adCreative.findMany({ where: { userId } }) as unknown[]
     const contextString = [
@@ -246,7 +251,6 @@ export async function POST(request: Request) {
       strategyContext,
       memoryContext,
       ragContext,
-      attachmentContext,
     ].filter(Boolean).join('\n\n')
 
     const localCtx: LocalToolContext = {
