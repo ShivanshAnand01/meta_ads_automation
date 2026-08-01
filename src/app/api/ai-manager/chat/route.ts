@@ -1,5 +1,5 @@
 import { db } from '@/lib/db/supabase-db'
-import { requireUserId, handleError } from '@/lib/supabase/server'
+import { requireUserId, handleError, getSupabaseServer } from '@/lib/supabase/server'
 import { createAIProvider } from '@/lib/ai/factory'
 import { streamAgentMessage } from '@/lib/ai/agent'
 import { ALL_TOOLS } from '@/lib/ai/tool-definitions'
@@ -75,7 +75,7 @@ export async function POST(request: Request) {
     const { message, conversationId, attachments } = body as {
       message: string
       conversationId?: string
-      attachments?: Array<{ url: string; type: string; name: string }>
+      attachments?: Array<{ url: string; type: string; name: string; documentId?: string }>
     }
 
     if (!message) {
@@ -213,6 +213,31 @@ export async function POST(request: Request) {
       }
     } catch {}
 
+    // Build context from PDF/text attachments that were vectorised during upload.
+    let attachmentContext = ''
+    try {
+      const docAttachments = attachments?.filter((a) => a.documentId) ?? []
+      if (docAttachments.length > 0) {
+        const supabase = await getSupabaseServer()
+        const ids = docAttachments.map((a) => a.documentId!)
+        const { data: chunks } = await supabase
+          .from('knowledge_chunks')
+          .select('document_id, content, chunk_index')
+          .in('document_id', ids)
+          .order('chunk_index')
+
+        if (chunks && chunks.length > 0) {
+          const namesByDoc = new Map(docAttachments.map((a) => [a.documentId, a.name]))
+          let text = `ATTACHED DOCUMENTS: ${docAttachments.map((a) => a.name).join(', ')}\n\n`
+          text += chunks
+            .map((c) => `[From ${namesByDoc.get(c.document_id)}]\n${c.content}`)
+            .join('\n\n')
+          // Keep context from exploding for very large PDFs.
+          attachmentContext = `\n\n${text.slice(0, 12000)}`
+        }
+      }
+    } catch {}
+
     const localCampaigns = await db.campaign.findMany({ where: { userId } }) as unknown[]
     const localCreatives = await db.adCreative.findMany({ where: { userId } }) as unknown[]
     const contextString = [
@@ -221,6 +246,7 @@ export async function POST(request: Request) {
       strategyContext,
       memoryContext,
       ragContext,
+      attachmentContext,
     ].filter(Boolean).join('\n\n')
 
     const localCtx: LocalToolContext = {

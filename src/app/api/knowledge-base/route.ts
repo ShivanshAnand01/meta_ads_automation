@@ -1,7 +1,17 @@
 import { requireUserId, handleError, getSupabaseServer } from '@/lib/supabase/server'
 import { ingestDocument, listDocuments, deleteDocument } from '@/lib/ai/rag'
 import { db } from '@/lib/db/supabase-db'
+import pdfParse from 'pdf-parse/lib/pdf-parse.js'
 import type { AIProviderType } from '@/lib/ai/types'
+
+async function extractTextFromFile(file: File): Promise<string> {
+  if (file.type === 'application/pdf') {
+    const buffer = Buffer.from(await file.arrayBuffer())
+    const parsed = await pdfParse(buffer)
+    return parsed.text || ''
+  }
+  return file.text()
+}
 
 export async function GET() {
   try {
@@ -36,18 +46,18 @@ export async function POST(request: Request) {
         return Response.json({ error: 'No file provided' }, { status: 400 })
       }
 
-      if (file.size > 5 * 1024 * 1024) {
-        return Response.json({ error: 'File too large (max 5MB)' }, { status: 413 })
+      if (file.size > 10 * 1024 * 1024) {
+        return Response.json({ error: 'File too large (max 10MB)' }, { status: 413 })
       }
 
-      const text = await file.text()
+      const text = await extractTextFromFile(file)
       if (!text.trim()) {
         return Response.json({ error: 'File is empty or not text-readable' }, { status: 400 })
       }
 
       let filePath: string | null = null
+      const supabase = await getSupabaseServer()
       if (file.type !== 'text/plain' && file.type !== 'text/csv' && file.type !== 'application/json') {
-        const supabase = await getSupabaseServer()
         const ext = file.name.split('.').pop() || 'txt'
         const storagePath = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
         const { error: uploadError } = await supabase.storage
@@ -57,12 +67,15 @@ export async function POST(request: Request) {
       }
 
       const result = await ingestDocument({
-        userId, title, content: text, sourceType: 'file',
+        userId, title, content: text, sourceType: 'chat-attachment',
         filePath, fileType: file.type,
         provider, apiKey, baseUrl, embeddingKey,
       })
 
-      return Response.json({ success: true, ...result })
+      let url = filePath ? supabase.storage.from('knowledge-documents').getPublicUrl(filePath).data.publicUrl : null
+      if (!url && filePath) url = null
+
+      return Response.json({ success: true, ...result, url })
     }
 
     const body = await request.json()

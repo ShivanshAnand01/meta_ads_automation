@@ -274,7 +274,7 @@ export default function AIManagerPage() {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [uploading, setUploading] = useState(false)
-  const [pendingAttachments, setPendingAttachments] = useState<Array<{ url: string; type: string; name: string }>>([])
+  const [pendingAttachments, setPendingAttachments] = useState<Array<{ id: string; url: string; type: string; name: string; documentId?: string; loading?: boolean }>>([])
   const [brain, setBrain] = useState<BrainConfig | null>(null)
   const [showBrainDialog, setShowBrainDialog] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
@@ -401,12 +401,45 @@ export default function AIManagerPage() {
     fetchApprovals()
   }, [fetchConversations, fetchBrain, fetchApprovals])
 
+  const isVectorizableDoc = (type: string) =>
+    type === 'application/pdf' || type === 'text/plain' || type === 'text/csv' || type === 'application/json'
+
   async function handleFileUpload(file: File) {
     if (!file) return
     if (file.size > 10 * 1024 * 1024) {
       toast.error('File too large (max 10MB)')
       return
     }
+
+    const tempId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    const isDoc = isVectorizableDoc(file.type)
+
+    if (isDoc) {
+      setPendingAttachments((prev) => [...prev, { id: tempId, url: '', type: file.type, name: file.name, loading: true }])
+      setUploading(true)
+      try {
+        const formData = new FormData()
+        formData.append('file', file)
+        const res = await fetch('/api/knowledge-base', { method: 'POST', body: formData })
+        const json = await res.json()
+        if (!res.ok || !json.success) throw new Error(json.error || 'Failed to vectorise file')
+        setPendingAttachments((prev) =>
+          prev.map((att) =>
+            att.id === tempId
+              ? { id: tempId, url: json.url || '', type: file.type, name: file.name, documentId: json.documentId, loading: false }
+              : att
+          )
+        )
+        toast.success(json.chunkCount ? `Vectorised ${file.name} (${json.chunkCount} chunks)` : `Stored ${file.name}`)
+      } catch (err) {
+        setPendingAttachments((prev) => prev.filter((att) => att.id !== tempId))
+        toast.error(err instanceof Error ? err.message : 'Failed to vectorise file')
+      } finally {
+        setUploading(false)
+      }
+      return
+    }
+
     setUploading(true)
     try {
       const formData = new FormData()
@@ -415,7 +448,7 @@ export default function AIManagerPage() {
       const res = await fetch('/api/upload', { method: 'POST', body: formData })
       const json = await res.json()
       if (!res.ok || !json.success) throw new Error(json.error || 'Upload failed')
-      setPendingAttachments((prev) => [...prev, { url: json.url, type: json.fileType, name: json.fileName }])
+      setPendingAttachments((prev) => [...prev, { id: tempId, url: json.url, type: json.fileType, name: json.fileName }])
       toast.success('File attached')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Upload failed')
@@ -824,21 +857,28 @@ export default function AIManagerPage() {
           {pendingAttachments.length > 0 && (
             <div className="border-t border-border/50 px-4 pt-2 pb-1 flex flex-wrap gap-2">
               {pendingAttachments.map((att, i) => (
-                <div key={i} className="relative group rounded-lg overflow-hidden border border-border/30">
-                  {att.type.startsWith('image/') ? (
+                <div key={att.id} className="relative group rounded-lg overflow-hidden border border-border/30">
+                  {att.loading ? (
+                    <div className="flex items-center justify-center bg-background/50 p-2 h-16 w-32">
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-2" />
+                      <span className="text-[10px] text-muted-foreground truncate">Vectorising…</span>
+                    </div>
+                  ) : att.type.startsWith('image/') ? (
                     <Image src={att.url} alt={att.name} width={64} height={64} className="h-16 w-16 object-cover" />
                   ) : (
-                    <div className="flex items-center gap-1 bg-background/50 p-2 h-16 w-16">
-                      <Paperclip className="h-3 w-3 text-muted-foreground" />
+                    <div className="flex items-center gap-1 bg-background/50 p-2 h-16 w-32">
+                      <Paperclip className="h-3 w-3 text-muted-foreground shrink-0" />
                       <span className="text-[10px] text-muted-foreground truncate">{att.name}</span>
                     </div>
                   )}
-                  <button
-                    onClick={() => setPendingAttachments((prev) => prev.filter((_, idx) => idx !== i))}
-                    className="absolute top-0 right-0 rounded-bl-lg bg-black/60 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <X className="h-3 w-3 text-white" />
-                  </button>
+                  {!att.loading && (
+                    <button
+                      onClick={() => setPendingAttachments((prev) => prev.filter((_, idx) => idx !== i))}
+                      className="absolute top-0 right-0 rounded-bl-lg bg-black/60 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="h-3 w-3 text-white" />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
