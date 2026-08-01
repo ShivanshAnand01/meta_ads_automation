@@ -300,6 +300,21 @@ create table if not exists public.pending_approvals (
 );
 create index if not exists pending_approvals_user_status_idx on public.pending_approvals(user_id, status);
 
+-- ---------------------------------------------------------------------------
+-- pending_questions — live in-chat clarifying questions awaiting a user answer
+-- ---------------------------------------------------------------------------
+create table if not exists public.pending_questions (
+  id text primary key,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  conversation_id text not null references public.ai_conversations(id) on delete cascade,
+  question text not null,
+  answer text,
+  status text not null default 'pending',    -- pending | answered | cancelled | expired
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null default now() + interval '5 minutes'
+);
+create index if not exists pending_questions_user_conversation_idx on public.pending_questions(user_id, conversation_id);
+
 -- ============================================================================
 -- Row Level Security
 -- ============================================================================
@@ -316,6 +331,7 @@ alter table public.manager_memory enable row level security;
 alter table public.ai_actions enable row level security;
 alter table public.daily_metrics enable row level security;
 alter table public.pending_approvals enable row level security;
+alter table public.pending_questions enable row level security;
 
 -- Helper: is a conversation owned by the current user?
 create or replace function public.conversation_owned(p_conversation_id text)
@@ -371,6 +387,7 @@ select public.apply_owner_policies('manager_memory');
 select public.apply_owner_policies('ai_actions');
 select public.apply_owner_policies('daily_metrics');
 select public.apply_owner_policies('pending_approvals');
+select public.apply_owner_policies('pending_questions');
 
 -- ai_messages / ai_notes: ownership flows through the parent conversation
 drop policy if exists "owner read"   on public.ai_messages;

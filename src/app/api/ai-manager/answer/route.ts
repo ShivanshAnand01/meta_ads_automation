@@ -18,12 +18,12 @@ export async function POST(request: Request) {
       )
     }
 
-    const meta = getQuestionMetadata(conversationId, questionId)
+    const meta = await getQuestionMetadata(conversationId, questionId)
     if (!meta || meta.userId !== userId) {
       return Response.json({ error: 'Question not found' }, { status: 404 })
     }
 
-    const resolved = resolvePendingQuestion(conversationId, questionId, answer)
+    const resolved = await resolvePendingQuestion(conversationId, questionId, answer)
     if (!resolved) {
       return Response.json({ error: 'Question not found or already answered' }, { status: 404 })
     }
@@ -44,12 +44,12 @@ export async function GET(request: Request) {
       return Response.json({ error: 'questionId and conversationId are required' }, { status: 400 })
     }
 
-    const meta = getQuestionMetadata(conversationId, questionId)
+    const meta = await getQuestionMetadata(conversationId, questionId)
     if (!meta || meta.userId !== userId) {
       return Response.json({ found: false })
     }
 
-    const question = getPendingQuestion(conversationId, questionId)
+    const question = await getPendingQuestion(conversationId, questionId)
     if (!question) {
       return Response.json({ found: false })
     }

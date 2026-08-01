@@ -331,7 +331,7 @@ export async function POST(request: Request) {
           console.error('AI Manager stream error:', error)
           send({ t: 'error', error: error instanceof Error ? error.message : 'Failed to process message' })
         } finally {
-          cancelPendingQuestionsForConversation(conversation!.id)
+          cancelPendingQuestionsForConversation(conversation!.id).catch(() => {})
           controller.close()
         }
       },

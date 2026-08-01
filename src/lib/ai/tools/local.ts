@@ -62,7 +62,7 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
         const answer = await createPendingQuestion(questionId, question, ctx.conversationId || 'unknown', userId)
         return { success: true, answer, message: 'User answered the question.' }
       } catch (err) {
-        cancelPendingQuestion(ctx.conversationId || 'unknown', questionId)
+        await cancelPendingQuestion(ctx.conversationId || 'unknown', questionId)
         return {
           error: err instanceof Error ? err.message : 'Question failed',
           answer: null,

@@ -123,6 +123,7 @@ model AiConversation {
   messages   AiMessage[]
   notes      AiNote[]
   approvals  PendingApproval[]
+  questions  PendingQuestion[]
   actions    AiAction[]
 
   @@map("ai_conversations")
@@ -261,6 +262,21 @@ model PendingApproval {
 
   @@index([userId, status])
   @@map("pending_approvals")
+}
+
+model PendingQuestion {
+  id             String         @id @map("id")
+  userId         String         @db.Uuid @map("user_id")
+  conversationId String         @map("conversation_id")
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  question       String         @map("question")
+  answer         String?        @map("answer")
+  status         String         @default("pending") @map("status")
+  createdAt      DateTime       @default(dbgenerated("now()")) @map("created_at")
+  expiresAt      DateTime       @default(dbgenerated("now()")) @map("expires_at")
+
+  @@index([userId, conversationId])
+  @@map("pending_questions")
 }
 
 model KnowledgeDocument {
