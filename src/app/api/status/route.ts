@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import {
   createSupabaseServiceClient,
   validateSupabaseEnv,
-  requireUserId,
 } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
@@ -34,12 +33,6 @@ interface StatusResponse {
 }
 
 export async function GET() {
-  try {
-    await requireUserId()
-  } catch {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
   const envCheck = validateSupabaseEnv()
 
   const status: StatusResponse = {

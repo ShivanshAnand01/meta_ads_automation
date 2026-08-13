@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Node.js utility scripts legitimately use CommonJS require:
+    "scripts/**/*.js",
   ]),
 ]);
 
