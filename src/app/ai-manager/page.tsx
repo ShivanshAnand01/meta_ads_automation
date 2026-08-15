@@ -62,6 +62,27 @@ function displayUserContent(content: string): string {
   return idx > 0 ? content.slice(0, idx) : content
 }
 
+/**
+ * Strip accidental tool-execution artifacts from assistant markdown so users
+ * only see conversational responses. We keep the visible output clean while
+ * leaving the original content stored in the database untouched.
+ */
+function cleanAssistantContent(content: string): string {
+  if (!content) return ''
+  return (
+    content
+      // Remove {{{ ... }}} or {{ ... }} template-like raw dumps.
+      .replace(/\{\{\{?[\s\S]*?\}\}\}?/g, '')
+      // Remove lines that look like raw JSON result dumps.
+      .replace(/^\s*\{[\s\S]*?\}\s*$/gm, '')
+      // Remove lines that start with common raw artifact markers.
+      .replace(/^\s*("results?"|"user"|"tool"|"arguments?"|"status"|"data")\s*[:=].*$/gim, '')
+      // Collapse more than two consecutive blank lines.
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  )
+}
+
 interface Conversation {
   id: string
   title: string
@@ -682,36 +703,34 @@ export default function AIManagerPage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-140px)] gap-4">
+      <div className="flex h-[calc(100vh-120px)] gap-4">
       {/* Main chat area */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-1 pb-3">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl gradient-bg shadow-md">
-              <Brain className="h-4 w-4 text-white" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl gradient-bg animate-gradient shadow-lg">
+              <Brain className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-bold">AI Manager</h1>
+              <h1 className="text-xl font-bold tracking-tight">AI Manager</h1>
               <p className="text-xs text-muted-foreground">
-                {activeConversation?.title || 'New conversation'}
+                {activeConversation?.title || 'Start a new conversation'}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setShowKBDialog(true)} className="glass">
-              <BookOpen className="mr-1.5 h-3.5 w-3.5" />
-              Knowledge Base
+            <Button variant="outline" size="sm" onClick={() => setShowKBDialog(true)} className="glass gap-1.5">
+              <BookOpen className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Knowledge Base</span>
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setShowBrainDialog(true)} className="glass">
-              {brain ? (
-                <><Cpu className="mr-1.5 h-3.5 w-3.5" />{brainShortLabel(brain)}</>
-              ) : (
-                <><Brain className="mr-1.5 h-3.5 w-3.5" />Configure</>
-              )}
+            <Button variant="outline" size="sm" onClick={() => setShowBrainDialog(true)} className="glass gap-1.5">
+              <Cpu className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">{brain ? brainShortLabel(brain) : 'Configure'}</span>
             </Button>
-            <Button variant="outline" size="sm" onClick={newConversation} className="glass">
+            <Button variant="outline" size="sm" onClick={newConversation} className="glass gap-1.5">
               <Plus className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">New</span>
             </Button>
           </div>
         </div>
@@ -722,32 +741,35 @@ export default function AIManagerPage() {
             <div ref={scrollContainerRef} onScroll={handleScroll} className="h-full overflow-y-auto scrollbar-thin">
             <div className="space-y-6 p-4 pb-8">
               {(!activeConversation || activeConversation.messages.length === 0) ? (
-                <div className="flex h-full min-h-[400px] flex-col items-center justify-center gap-6">
+                <div className="flex h-full min-h-[420px] flex-col items-center justify-center gap-6 px-4">
                   <motion.div
-                    initial={{ scale: 0, opacity: 0 }}
+                    initial={{ scale: 0.8, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
-                    className="flex h-16 w-16 items-center justify-center rounded-2xl gradient-bg animate-gradient shadow-xl glow-md"
+                    transition={{ duration: 0.4 }}
+                    className="flex h-20 w-20 items-center justify-center rounded-3xl gradient-bg animate-gradient shadow-2xl glow-md"
                   >
-                    <Sparkles className="h-7 w-7 text-white" />
+                    <Sparkles className="h-9 w-9 text-white" />
                   </motion.div>
-                  <div className="text-center">
-                    <h2 className="text-xl font-bold gradient-text">AI Ads Manager</h2>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Your AI brain for Meta Ads. Ask anything, create campaigns, generate creatives.
+                  <div className="text-center max-w-md">
+                    <h2 className="text-2xl font-bold gradient-text">AI Ads Manager</h2>
+                    <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
+                      Ask anything about your Meta Ads — create campaigns, generate Marathi creatives, review performance, or get strategy advice.
                     </p>
                   </div>
-                  <div className="grid w-full max-w-lg gap-2 sm:grid-cols-2">
+                  <div className="grid w-full max-w-xl gap-3 sm:grid-cols-2">
                     {suggestions.map((s, i) => (
                       <motion.button
                         key={i}
-                        initial={{ opacity: 0, y: 10 }}
+                        initial={{ opacity: 0, y: 12 }}
                         animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: i * 0.05 }}
+                        transition={{ delay: i * 0.06 }}
                         onClick={() => { setInput(s.text) }}
-                        className="flex items-center gap-3 rounded-xl border border-border/50 bg-background/50 p-3 text-left text-sm transition-colors hover:bg-muted hover:border-primary/30"
+                        className="group flex items-start gap-3 rounded-2xl border border-border/40 bg-background/40 p-4 text-left text-sm transition-all hover:bg-primary/5 hover:border-primary/30 hover:shadow-md hover:-translate-y-0.5"
                       >
-                        <s.icon className="h-4 w-4 text-primary shrink-0" />
-                        <span>{s.text}</span>
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl gradient-bg shadow-sm">
+                          <s.icon className="h-4 w-4 text-white" />
+                        </div>
+                        <span className="pt-1 text-foreground/90 group-hover:text-foreground transition-colors">{s.text}</span>
                       </motion.button>
                     ))}
                   </div>
@@ -757,30 +779,31 @@ export default function AIManagerPage() {
                   {activeConversation.messages.map((msg, i) => (
                     <motion.div
                       key={i}
-                      initial={{ opacity: 0, y: 15 }}
+                      initial={{ opacity: 0, y: 12 }}
                       animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.25 }}
                       className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                     >
                       {msg.role === 'assistant' && (
-                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg gradient-bg shadow-md mt-1">
-                          <Brain className="h-3.5 w-3.5 text-white" />
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl gradient-bg shadow-md mt-1">
+                          <Brain className="h-4 w-4 text-white" />
                         </div>
                       )}
 
-                      <div className={`max-w-[85%] ${msg.role === 'user' ? 'order-first' : ''}`}>
+                      <div className={`max-w-[88%] sm:max-w-[80%] ${msg.role === 'user' ? 'order-first' : ''}`}>
                         {msg.role === 'user' ? (
                           <div className="flex flex-col items-end gap-2">
-                            <div className="rounded-2xl gradient-bg animate-gradient px-4 py-2.5 text-sm text-white shadow-md">
-                              <p className="whitespace-pre-wrap">{displayUserContent(msg.content)}</p>
+                            <div className="rounded-2xl rounded-tr-sm gradient-bg animate-gradient px-4 py-2.5 text-sm text-white shadow-md">
+                              <p className="whitespace-pre-wrap leading-relaxed">{displayUserContent(msg.content)}</p>
                             </div>
                             {msg.attachments && msg.attachments.length > 0 && (
                               <div className="flex flex-wrap gap-2 justify-end">
                                 {msg.attachments.map((att, j) => (
-                                  <div key={j} className="relative rounded-lg overflow-hidden border border-white/20">
+                                  <div key={j} className="relative rounded-xl overflow-hidden border border-white/20 shadow-sm">
                                     {att.type.startsWith('image/') ? (
                                       <Image src={att.url} alt={att.name} width={64} height={64} className="h-16 w-16 object-cover" />
                                     ) : (
-                                      <div className="flex items-center gap-2 rounded-lg bg-background/50 p-2 h-16 w-32">
+                                      <div className="flex items-center gap-2 rounded-xl bg-background/50 p-2 h-16 w-32">
                                         <Paperclip className="h-4 w-4 text-muted-foreground shrink-0" />
                                         <span className="text-xs text-muted-foreground truncate">{att.name}</span>
                                       </div>
@@ -791,18 +814,18 @@ export default function AIManagerPage() {
                             )}
                           </div>
                         ) : (
-                          <div className="space-y-3">
+                          <div className="space-y-2.5">
                             {/* Thinking indicator */}
-                            {msg.thinking && !msg.content && (!msg.toolCalls || msg.toolCalls.length === 0) && (
+                            {msg.thinking && !cleanAssistantContent(msg.content) && (!msg.toolCalls || msg.toolCalls.length === 0) && (
                               <ThinkingIndicator phase={msg.thinkingPhase} />
                             )}
 
                             {/* Text content */}
-                            {msg.content && (
-                              <div className="rounded-2xl glass card-3d px-4 py-3">
-                                <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:my-2 prose-p:my-1 prose-ul:my-1 prose-pre:my-2 prose-code:text-xs prose-code:before:content-none prose-code:after:content-none">
+                            {cleanAssistantContent(msg.content) && (
+                              <div className="rounded-2xl rounded-tl-sm glass card-3d px-4 py-3 shadow-sm">
+                                <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:my-2 prose-p:my-1.5 prose-ul:my-1.5 prose-pre:my-2 prose-code:text-xs prose-code:before:content-none prose-code:after:content-none">
                                   <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-                                    {msg.content}
+                                    {cleanAssistantContent(msg.content)}
                                   </ReactMarkdown>
                                 </div>
                                 {msg.streaming && !msg.thinking && (
@@ -813,7 +836,7 @@ export default function AIManagerPage() {
 
                             {/* Tool calls */}
                             {msg.toolCalls && msg.toolCalls.length > 0 && (
-                              <div className="space-y-2">
+                              <div className="space-y-1.5 pl-1">
                                 {msg.toolCalls.map((tc) => (
                                   <ToolCard
                                     key={tc.id}
@@ -831,7 +854,7 @@ export default function AIManagerPage() {
                             )}
 
                             {/* Thinking again (between tool rounds) */}
-                            {msg.thinking && (msg.content || (msg.toolCalls && msg.toolCalls.length > 0)) && (
+                            {msg.thinking && (cleanAssistantContent(msg.content) || (msg.toolCalls && msg.toolCalls.length > 0)) && (
                               <ThinkingIndicator phase={msg.thinkingPhase} compact />
                             )}
 
@@ -891,8 +914,8 @@ export default function AIManagerPage() {
           )}
 
           {/* Input bar */}
-          <div className="border-t border-border/50 p-3">
-            <div className="flex items-end gap-2">
+          <div className="border-t border-border/40 p-3 bg-background/30">
+            <div className="flex items-end gap-2 rounded-2xl border border-border/50 bg-muted/20 p-2 shadow-sm focus-within:ring-1 focus-within:ring-primary/20 focus-within:border-primary/30 transition-all">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -903,11 +926,11 @@ export default function AIManagerPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="shrink-0 glass"
+                className="shrink-0 h-9 w-9 rounded-xl hover:bg-primary/10"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading || sending}
               >
-                {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
+                {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4 text-muted-foreground" />}
               </Button>
               <Textarea
                 value={input}
@@ -918,9 +941,9 @@ export default function AIManagerPage() {
                     sendMessage()
                   }
                 }}
-                placeholder="Ask AI to manage your ads…"
-                disabled={sending}
-                className="min-h-[40px] max-h-32 resize-none glass border-border/50"
+                placeholder={brain?.configured ? 'Ask AI to manage your ads…' : 'Configure AI brain to start'}
+                disabled={sending || !brain?.configured}
+                className="min-h-[36px] max-h-32 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 px-2 py-2 text-sm"
                 rows={1}
               />
               {sending ? (
@@ -928,7 +951,7 @@ export default function AIManagerPage() {
                   variant="destructive"
                   size="icon"
                   onClick={stopSending}
-                  className="shrink-0"
+                  className="shrink-0 h-9 w-9 rounded-xl"
                 >
                   <Square className="h-4 w-4" />
                 </Button>
@@ -936,7 +959,7 @@ export default function AIManagerPage() {
                 <Button
                   onClick={sendMessage}
                   disabled={(!input.trim() && pendingAttachments.length === 0) || !brain?.configured}
-                  className="shrink-0 gradient-bg animate-gradient shadow-lg"
+                  className="shrink-0 h-9 w-9 rounded-xl gradient-bg animate-gradient shadow-md p-0"
                 >
                   <Send className="h-4 w-4" />
                 </Button>
@@ -947,14 +970,17 @@ export default function AIManagerPage() {
       </div>
 
       {/* Right sidebar */}
-      <div className="hidden w-72 shrink-0 space-y-3 overflow-y-auto lg:block">
+      <div className="hidden w-80 shrink-0 space-y-3 overflow-y-auto lg:block pr-1">
         {/* Approvals (guardrail queue) */}
         {approvals.length > 0 && (
-          <Card className="glass card-3d border-amber-500/40">
+          <Card className="glass card-3d border-amber-500/40 shadow-sm">
             <CardHeader className="pb-2">
               <div className="flex items-center gap-2">
-                <ShieldAlert className="h-4 w-4 text-amber-500" />
-                <CardTitle className="text-sm">Pending Approvals ({approvals.length})</CardTitle>
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/15">
+                  <ShieldAlert className="h-3.5 w-3.5 text-amber-500" />
+                </div>
+                <CardTitle className="text-sm">Pending Approvals</CardTitle>
+                <Badge variant="secondary" className="ml-auto text-[10px]">{approvals.length}</Badge>
               </div>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -966,10 +992,12 @@ export default function AIManagerPage() {
         )}
 
         {/* Notes */}
-        <Card className="glass card-3d">
+        <Card className="glass card-3d shadow-sm">
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
-              <StickyNote className="h-4 w-4 text-amber-500" />
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/15">
+                <StickyNote className="h-3.5 w-3.5 text-amber-500" />
+              </div>
               <CardTitle className="text-sm">AI Notes</CardTitle>
             </div>
           </CardHeader>
@@ -978,43 +1006,48 @@ export default function AIManagerPage() {
               <p className="text-xs text-muted-foreground">Notes from AI will appear here</p>
             ) : (
               notes.map((note) => (
-                <div key={note.id} className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-2.5">
+                <div key={note.id} className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-2.5">
                   <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">{note.title}</p>
-                  <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap">{note.content}</p>
+                  <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap leading-relaxed">{note.content}</p>
                 </div>
               ))
             )}
           </CardContent>
         </Card>
 
-        {/* History toggle */}
-        <Button variant="outline" className="w-full glass" onClick={() => setShowHistory(!showHistory)}>
-          <History className="mr-2 h-4 w-4" />
-          {showHistory ? 'Hide' : 'Show'} History
-        </Button>
-
-        {/* Conversations */}
-        {showHistory && (
-          <Card className="glass card-3d">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Conversations</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-1">
+        {/* History toggle + list */}
+        <Card className="glass card-3d shadow-sm">
+          <CardHeader className="pb-2">
+            <button
+              onClick={() => setShowHistory(!showHistory)}
+              className="flex w-full items-center justify-between text-left"
+            >
+              <div className="flex items-center gap-2">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10">
+                  <History className="h-3.5 w-3.5 text-primary" />
+                </div>
+                <CardTitle className="text-sm">Conversations</CardTitle>
+              </div>
+              <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showHistory ? 'rotate-180' : ''}`} />
+            </button>
+          </CardHeader>
+          {showHistory && (
+            <CardContent className="space-y-1 pt-0">
               {conversations.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No conversations yet</p>
+                <p className="text-xs text-muted-foreground py-2">No conversations yet</p>
               ) : (
                 conversations.map((c) => (
                   <div
                     key={c.id}
-                    className={`flex items-center justify-between rounded-lg p-2 text-xs cursor-pointer transition-colors ${
+                    className={`group flex items-center justify-between rounded-xl p-2.5 text-xs cursor-pointer transition-colors ${
                       activeConversation?.id === c.id ? 'bg-primary/10 text-primary' : 'hover:bg-muted'
                     }`}
                     onClick={() => { setActiveConversation(c); setNotes(c.notes || []); setAutoScroll(true) }}
                   >
-                    <span className="truncate flex-1">{c.title}</span>
+                    <span className="truncate flex-1 font-medium">{c.title}</span>
                     <button
                       onClick={(e) => { e.stopPropagation(); deleteConversation(c.id) }}
-                      className="ml-1 shrink-0 text-muted-foreground hover:text-red-500"
+                      className="ml-1.5 shrink-0 rounded-md p-1 text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-500 transition-all"
                     >
                       <Trash2 className="h-3 w-3" />
                     </button>
@@ -1022,28 +1055,33 @@ export default function AIManagerPage() {
                 ))
               )}
             </CardContent>
-          </Card>
-        )}
+          )}
+        </Card>
 
         {/* Tools */}
-        <Card className="glass card-3d">
+        <Card className="glass card-3d shadow-sm">
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
-              <Wrench className="h-4 w-4 text-emerald-500" />
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/15">
+                <Wrench className="h-3.5 w-3.5 text-emerald-500" />
+              </div>
               <CardTitle className="text-sm">Available Tools</CardTitle>
             </div>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-wrap gap-1">
-              {ALL_TOOL_NAMES.map((tool) => {
+            <div className="flex flex-wrap gap-1.5">
+              {ALL_TOOL_NAMES.slice(0, 18).map((tool) => {
                 const Icon = toolIcons[tool] || Wrench
                 return (
-                  <Badge key={tool} variant="secondary" className="text-[10px] font-mono gap-1">
+                  <Badge key={tool} variant="secondary" className="text-[10px] font-mono gap-1 py-0.5">
                     <Icon className="h-2.5 w-2.5" />
                     {tool}
                   </Badge>
                 )
               })}
+              {ALL_TOOL_NAMES.length > 18 && (
+                <Badge variant="outline" className="text-[10px]">+{ALL_TOOL_NAMES.length - 18} more</Badge>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -1202,6 +1240,7 @@ function ToolCard({ toolCall, expanded, onToggle }: {
   expanded: boolean
   onToggle: () => void
 }) {
+  const [showRaw, setShowRaw] = useState(false)
   const Icon = toolIcons[toolCall.name] || Wrench
   const resultObj = typeof toolCall.result === 'object' && toolCall.result !== null
     ? toolCall.result as Record<string, unknown>
@@ -1212,33 +1251,37 @@ function ToolCard({ toolCall, expanded, onToggle }: {
   const needsApproval = Boolean(resultObj?.needsApproval)
   const reportMd = resultObj?.report as string | undefined
 
+  const friendlyMessage =
+    (resultObj?.message as string | undefined) ||
+    (resultObj?.summary as string | undefined) ||
+    (resultObj?.transcript as string | undefined)
+
+  const statusLabel =
+    toolCall.status === 'pending' ? 'Running' :
+    toolCall.status === 'error' ? 'Failed' : 'Done'
+
+  const statusColor =
+    toolCall.status === 'pending' ? 'text-amber-500' :
+    toolCall.status === 'error' ? 'text-red-500' : 'text-emerald-500'
+
   return (
-    <div className={`rounded-xl border overflow-hidden transition-colors ${
-      toolCall.status === 'pending'
-        ? 'border-primary/30 bg-primary/5'
-        : 'border-border/40 bg-background/60'
-    }`}>
+    <div className="rounded-lg border border-border/30 bg-muted/20 overflow-hidden transition-colors hover:border-border/50">
       <button
         onClick={onToggle}
-        className="flex items-center gap-2 w-full p-2.5 text-left hover:bg-muted/50 transition-colors"
+        className="flex items-center gap-2 w-full px-3 py-2 text-left transition-colors hover:bg-muted/40"
       >
-        <div className={`flex h-6 w-6 items-center justify-center rounded-md ${
-          toolCall.status === 'pending' ? 'bg-amber-500/15' :
-          toolCall.status === 'error' ? 'bg-red-500/15' : 'bg-emerald-500/15'
-        }`}>
+        <div className={`flex h-5 w-5 items-center justify-center rounded-md ${statusColor} bg-current/10`}>
           {toolCall.status === 'pending' ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500" />
+            <Loader2 className="h-3 w-3 animate-spin" />
           ) : toolCall.status === 'error' ? (
-            <XCircle className="h-3.5 w-3.5 text-red-500" />
+            <XCircle className="h-3 w-3" />
           ) : (
-            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+            <CheckCircle2 className="h-3 w-3" />
           )}
         </div>
         <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-        <span className="text-xs font-mono font-medium text-primary">{toolCall.name}</span>
-        <span className="text-xs text-muted-foreground ml-auto">
-          {toolCall.status === 'pending' ? 'Running…' : toolCall.status === 'error' ? 'Failed' : 'Done'}
-        </span>
+        <span className="text-xs font-medium">{toolCall.name}</span>
+        <span className={`text-[10px] ml-auto ${statusColor}`}>{statusLabel}</span>
         <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${expanded ? 'rotate-180' : ''}`} />
       </button>
 
@@ -1248,64 +1291,60 @@ function ToolCard({ toolCall, expanded, onToggle }: {
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            className="border-t border-border/30 overflow-hidden"
+            className="border-t border-border/20 overflow-hidden"
           >
-            <div className="p-2.5 space-y-2">
-              {Object.keys(toolCall.arguments).length > 0 && (
-                <div>
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase mb-1">Arguments</p>
-                  <pre className="text-[11px] bg-muted/50 rounded-lg p-2 overflow-x-auto max-h-40 scrollbar-thin">
-                    {JSON.stringify(toolCall.arguments, null, 2)}
-                  </pre>
-                </div>
-              )}
+            <div className="px-3 py-2.5 space-y-2.5">
+              {/* Friendly result summary */}
               {toolCall.error ? (
-                <div>
-                  <p className="text-[10px] font-semibold text-red-500 uppercase mb-1">Error</p>
-                  <p className="text-xs text-red-500">{toolCall.error}</p>
+                <div className="rounded-md bg-red-500/5 border border-red-500/20 px-2.5 py-2">
+                  <p className="text-[11px] text-red-500">{toolCall.error}</p>
                 </div>
-              ) : toolCall.result !== undefined && (
-                <div className="space-y-2">
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase mb-1">Result</p>
-                  {needsApproval ? (
-                    <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-2.5 space-y-1.5">
-                      <div className="flex items-center gap-2">
-                        <ShieldAlert className="h-3.5 w-3.5 text-amber-500" />
-                        <span className="text-[11px] font-semibold">Needs your approval</span>
-                        {(resultObj?.risk as string) && (
-                          <span className="text-[10px] uppercase ml-auto text-amber-500">{resultObj?.risk as string} risk</span>
-                        )}
-                      </div>
-                      <p className="text-xs text-muted-foreground">{(resultObj?.summary as string) || (resultObj?.message as string) || 'Spend-affecting action queued.'}</p>
-                      <p className="text-[11px] text-muted-foreground">Approve it in the Approvals panel on the right.</p>
-                    </div>
-                  ) : audioUrl ? (
-                    <div className="space-y-1">
-                      <p className="text-xs text-muted-foreground flex items-center gap-1"><Volume2 className="h-3 w-3" /> {(resultObj?.message as string) || 'Voice reply'}</p>
-                      <audio controls src={audioUrl} className="w-full h-9" />
-                    </div>
-                  ) : chartSpec ? (
-                    <ChartRenderer spec={chartSpec} />
-                  ) : reportMd ? (
-                    <pre className="text-[11px] bg-muted/50 rounded-lg p-2 overflow-x-auto max-h-60 scrollbar-thin whitespace-pre-wrap">{reportMd.slice(0, 1500)}</pre>
-                  ) : imageUrl ? (
-                    <div className="space-y-1">
-                      <p className="text-xs text-muted-foreground">
-                        {(resultObj?.message as string) || 'Image generated successfully'}
-                      </p>
-                      <Image
-                        src={imageUrl}
-                        alt="Generated"
-                        width={600}
-                        height={256}
-                        className="rounded-lg max-w-full max-h-64 object-cover border border-border/30"
-                      />
-                    </div>
-                  ) : (
-                    <pre className="text-[11px] bg-muted/50 rounded-lg p-2 overflow-x-auto max-h-60 scrollbar-thin">
+              ) : needsApproval ? (
+                <div className="rounded-md bg-amber-500/5 border border-amber-500/20 px-2.5 py-2 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <ShieldAlert className="h-3 w-3 text-amber-500" />
+                    <span className="text-[11px] font-semibold">Needs your approval</span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">{friendlyMessage || 'Spend-affecting action queued.'}</p>
+                </div>
+              ) : audioUrl ? (
+                <div className="space-y-1.5">
+                  <p className="text-[11px] text-muted-foreground flex items-center gap-1"><Volume2 className="h-3 w-3" /> {friendlyMessage || 'Voice reply'}</p>
+                  <audio controls src={audioUrl} className="w-full h-8" />
+                </div>
+              ) : chartSpec ? (
+                <ChartRenderer spec={chartSpec} />
+              ) : reportMd ? (
+                <div className="rounded-md bg-muted/40 p-2.5 max-h-60 overflow-y-auto scrollbar-thin">
+                  <div className="prose prose-xs dark:prose-invert max-w-none">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{reportMd}</ReactMarkdown>
+                  </div>
+                </div>
+              ) : imageUrl ? (
+                <div className="space-y-1.5">
+                  <p className="text-[11px] text-muted-foreground">{friendlyMessage || 'Image generated'}</p>
+                  <Image src={imageUrl} alt="Generated" width={600} height={256} className="rounded-md max-w-full max-h-52 object-cover border border-border/30" />
+                </div>
+              ) : friendlyMessage ? (
+                <div className="rounded-md bg-emerald-500/5 border border-emerald-500/20 px-2.5 py-2">
+                  <p className="text-[11px] text-muted-foreground">{friendlyMessage}</p>
+                </div>
+              ) : null}
+
+              {/* Raw output toggle */}
+              {toolCall.result !== undefined && (
+                <div className="pt-1">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setShowRaw((v) => !v) }}
+                    className="text-[10px] text-muted-foreground hover:text-primary underline decoration-dashed underline-offset-2"
+                  >
+                    {showRaw ? 'Hide raw output' : 'Show raw output'}
+                  </button>
+                  {showRaw && (
+                    <pre className="mt-1.5 text-[10px] bg-muted/60 rounded-md p-2 overflow-x-auto max-h-48 scrollbar-thin border border-border/20">
                       {typeof toolCall.result === 'string'
-                        ? toolCall.result.slice(0, 500)
-                        : JSON.stringify(toolCall.result, null, 2).slice(0, 500)}
+                        ? toolCall.result
+                        : JSON.stringify(toolCall.result, null, 2)}
                     </pre>
                   )}
                 </div>
