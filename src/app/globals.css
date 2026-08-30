@@ -61,7 +61,7 @@
   color-scheme: light;
   --background: oklch(0.98 0.002 250);
   --foreground: oklch(0.15 0.02 250);
-  --card: oklch(1 0 0 / 0.7);
+  --card: oklch(1 0 0);
   --card-foreground: oklch(0.15 0.02 250);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.15 0.02 250);
@@ -74,7 +74,7 @@
   --accent: oklch(0.94 0.03 280);
   --accent-foreground: oklch(0.2 0.02 250);
   --destructive: oklch(0.58 0.24 27);
-  --border: oklch(0.9 0.01 250 / 0.6);
+  --border: oklch(0.91 0.008 250);
   --input: oklch(0.92 0.01 250);
   --ring: oklch(0.52 0.22 264);
   --chart-1: oklch(0.55 0.22 264);
@@ -87,34 +87,55 @@
   --sidebar-foreground: oklch(0.95 0.005 250);
   --sidebar-primary: oklch(0.52 0.22 264);
   --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.25 0.02 250 / 0.8);
+  --sidebar-accent: oklch(0.26 0.02 250);
   --sidebar-accent-foreground: oklch(0.95 0.005 250);
-  --sidebar-border: oklch(0.3 0.02 250 / 0.5);
+  --sidebar-border: oklch(0.27 0.02 250);
   --sidebar-ring: oklch(0.52 0.22 264);
   --gradient-start: oklch(0.52 0.22 264);
   --gradient-mid: oklch(0.55 0.24 290);
   --gradient-end: oklch(0.6 0.22 330);
   --glow: oklch(0.52 0.22 264 / 0.15);
+
+  /* Data-visualisation palette.
+     Two categorical slots (blue, orange), validated for colour-vision
+     deficiency and for 3:1 contrast against this surface. Assigned in fixed
+     order and never cycled: spend is always blue, revenue always orange, so
+     the colour follows the meaning rather than the row position. */
+  --viz-1: #2a78d6;
+  --viz-2: #eb6834;
+  --viz-grid: #e1e0d9;
+  --viz-axis: #898781;
+  --viz-surface: #ffffff;
+
+  /* Status colours are reserved: they never double as a series colour, and
+     they always ship with an icon and a word. Colour alone is not a signal a
+     colourblind client can read. */
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
+  --status-good-ink: #006300;
+  --status-critical-ink: #a32222;
 }
 
 .dark {
   color-scheme: dark;
   --background: oklch(0.13 0.02 250);
   --foreground: oklch(0.97 0.005 250);
-  --card: oklch(0.18 0.02 250 / 0.7);
+  --card: oklch(0.18 0.02 250);
   --card-foreground: oklch(0.97 0.005 250);
   --popover: oklch(0.18 0.02 250);
   --popover-foreground: oklch(0.97 0.005 250);
   --primary: oklch(0.6 0.22 264);
   --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.25 0.02 250 / 0.6);
+  --secondary: oklch(0.25 0.02 250);
   --secondary-foreground: oklch(0.97 0.005 250);
-  --muted: oklch(0.22 0.02 250 / 0.5);
+  --muted: oklch(0.24 0.02 250);
   --muted-foreground: oklch(0.65 0.02 250);
   --accent: oklch(0.28 0.03 280 / 0.5);
   --accent-foreground: oklch(0.97 0.005 250);
   --destructive: oklch(0.68 0.2 22);
-  --border: oklch(0.3 0.02 250 / 0.4);
+  --border: oklch(0.29 0.015 250);
   --input: oklch(0.3 0.02 250 / 0.4);
   --ring: oklch(0.6 0.22 264);
   --chart-1: oklch(0.6 0.22 264);
@@ -126,10 +147,25 @@
   --sidebar-foreground: oklch(0.95 0.005 250);
   --sidebar-primary: oklch(0.6 0.22 264);
   --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.2 0.02 250 / 0.6);
+  --sidebar-accent: oklch(0.24 0.02 250);
   --sidebar-accent-foreground: oklch(0.95 0.005 250);
   --sidebar-border: oklch(0.25 0.02 250 / 0.4);
   --sidebar-ring: oklch(0.6 0.22 264);
+
+  /* Dark steps of the same two hues, re-validated against the dark surface.
+     Not an automatic flip of the light values. */
+  --viz-1: #3987e5;
+  --viz-2: #d95926;
+  --viz-grid: #2c2c2a;
+  --viz-axis: #898781;
+  --viz-surface: oklch(0.18 0.02 250);
+
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
+  --status-good-ink: #4ade80;
+  --status-critical-ink: #f87171;
   --gradient-start: oklch(0.55 0.22 264);
   --gradient-mid: oklch(0.58 0.24 290);
   --gradient-end: oklch(0.63 0.22 330);
@@ -162,14 +198,13 @@
 }
 
 @layer utilities {
+  /* A quiet, opaque surface. The old version was a blurred translucent
+     panel: pretty in isolation, but it put a moving background behind
+     financial figures and cost contrast on every number the client reads. */
   .glass {
-    background: color-mix(in oklch, var(--card) 85%, transparent);
-    backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
-    box-shadow:
-      0 1px 3px oklch(0.1 0.02 250 / 0.06),
-      0 1px 2px oklch(0.1 0.02 250 / 0.04);
+    background: var(--card);
+    border: 1px solid var(--border);
+    box-shadow: 0 1px 2px oklch(0.1 0.02 250 / 0.04);
   }
 
   .glass-dark {
@@ -178,16 +213,21 @@
     -webkit-backdrop-filter: blur(16px) saturate(150%);
   }
 
+  /* Headings are ink, not decoration. Gradient text lowers contrast and
+     makes every heading shout equally, which is the same as none of them
+     shouting. Kept as a no-op class so existing pages need no edit. */
   .gradient-text {
-    background: linear-gradient(135deg, var(--gradient-start), var(--gradient-mid), var(--gradient-end));
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    color: transparent;
+    color: var(--foreground);
+    letter-spacing: -0.02em;
   }
 
+  /* One flat accent for primary actions. A single solid colour reads as
+     "this is the button" far faster than a three-stop gradient. */
   .gradient-bg {
-    background: linear-gradient(135deg, var(--gradient-start), var(--gradient-mid), var(--gradient-end));
+    background: var(--primary);
+  }
+  .gradient-bg:hover {
+    background: color-mix(in oklch, var(--primary) 88%, black);
   }
 
   .gradient-border {
@@ -207,23 +247,26 @@
     pointer-events: none;
   }
 
+  /* Lift, not levitation. Cards tilting and scaling under the cursor make
+     a data table feel like a game; a 1px border shift reads as "this is
+     interactive" without moving the numbers. */
   .card-3d {
-    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
-    transform-style: preserve-3d;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
   .card-3d:hover {
-    transform: perspective(1200px) translateY(-6px) scale(1.015);
-    box-shadow:
-      0 24px 48px -16px oklch(0.1 0.02 250 / 0.18),
-      0 0 0 1px oklch(0.52 0.22 264 / 0.12),
-      0 0 40px -8px var(--glow);
+    border-color: color-mix(in oklch, var(--primary) 35%, var(--border));
+    box-shadow: 0 2px 8px -2px oklch(0.1 0.02 250 / 0.08);
   }
 
-  .glow-sm {
-    box-shadow: 0 0 20px -5px var(--glow);
-  }
+  .glow-sm,
   .glow-md {
-    box-shadow: 0 0 40px -8px var(--glow);
+    box-shadow: none;
+  }
+
+  /* Money and metrics align vertically down a column. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
   }
 
   .scrollbar-thin {
@@ -245,13 +288,11 @@
     background: color-mix(in oklch, var(--muted-foreground) 50%, transparent);
   }
 
+  /* Was an infinite 6s background-position loop on every primary button.
+     Perpetual motion with nothing to communicate is just noise competing
+     with the numbers. Now inert. */
   .animate-gradient {
-    background-size: 200% 200%;
-    animation: gradient-shift 6s ease infinite;
-  }
-  @keyframes gradient-shift {
-    0%, 100% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
+    background-size: auto;
   }
 
   .shimmer {

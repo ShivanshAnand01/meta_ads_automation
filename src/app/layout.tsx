@@ -79,8 +79,10 @@ export default async function RootLayout({
           {showSidebar ? (
             <div className="flex min-h-screen">
               <Sidebar />
-              <main id="main-content" tabIndex={-1} className="flex-1 md:ml-64">
-                <div className="container mx-auto p-4 md:p-8">{children}</div>
+              <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 overflow-x-hidden md:ml-64">
+                {/* pt-16 on mobile clears the fixed hamburger, which was
+                    sitting on top of the page heading. */}
+                <div className="container mx-auto p-4 pt-16 md:p-8">{children}</div>
               </main>
             </div>
           ) : (
