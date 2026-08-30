@@ -757,3 +757,26 @@ begin
   where s.name like p_user_id::text || '__%';
 end;
 $$;
+
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- Migrations applied after the initial schema.
+--
+-- schema.sql remains the full source of truth for a fresh database, but
+-- incremental changes now live in supabase/migrations/ so an existing
+-- deployment can be upgraded without a reset. Apply them in order:
+--
+--   supabase/migrations/0001_ads_delivery_layer.sql
+--   supabase/migrations/0002_private_storage.sql
+--
+-- 0001 adds the ad set / ad delivery columns, ad-level metric granularity,
+--      a unique index that makes double-counted metrics impossible,
+--      approval expiry, and the rate-limit table + bump_rate_limit().
+-- 0002 makes every storage bucket private and adds owner-scoped RLS, so
+--      client documents and unreleased creative stop being world-readable.
+--
+-- The pg_cron block below is intentionally still commented out: scheduling is
+-- now driven by Vercel Cron hitting /api/cron/run-jobs (see vercel.json),
+-- which honours each job's nextRunAt. Enable pg_cron only if you prefer to
+-- drive the scheduler from Supabase instead — do not run both.
+-- ═══════════════════════════════════════════════════════════════════════

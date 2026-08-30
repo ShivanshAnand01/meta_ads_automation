@@ -2,6 +2,10 @@ import crypto from 'node:crypto'
 import { createSupabaseServiceClient, requireUserId, handleError } from '@/lib/supabase/server'
 import { withServiceClient, db } from '@/lib/db/supabase-db'
 import { runRoutine, type Routine } from '@/lib/ai/autonomous'
+import { enforceRateLimit } from '@/lib/rate-limit'
+
+// A routine is a full agent run with tool calls; it needs real headroom.
+export const maxDuration = 300
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -63,6 +67,9 @@ export async function POST(request: Request) {
 
     // Manual mode: a logged-in user triggers their own routine (useful for testing).
     const userId = await requireUserId()
+
+    const limited = await enforceRateLimit(userId, 'autonomous', 'autonomous runs')
+    if (limited) return limited
     const r = await runRoutine({ userId, routine, customPrompt: body.customPrompt, jobId: body.jobId })
     return Response.json({ routine, ...r })
   } catch (error) {

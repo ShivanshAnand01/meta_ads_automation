@@ -1,73 +1,55 @@
-import { db } from '@/lib/db/supabase-db'
 import { requireUserId, handleError } from '@/lib/supabase/server'
-import { getMCPClient } from '@/lib/meta/mcp-client'
-import { getMetaConnection, normalizeAdAccountId } from '@/lib/meta/user-client'
+import { publishFullCampaign } from '@/lib/meta/publish'
+import { checkBudget } from '@/lib/ai/budget-guard'
+import { enforceRateLimit } from '@/lib/rate-limit'
+
+// Publishing walks Graph several times (campaign, ad set, creatives, ads).
+export const maxDuration = 120
 
 export async function POST(request: Request) {
   try {
     const userId = await requireUserId()
-    const body = await request.json()
-    const { campaignId } = body as { campaignId?: string }
 
-    if (!campaignId) {
-      return Response.json(
-        { error: 'campaignId is required' },
-        { status: 400 }
-      )
+    const limited = await enforceRateLimit(userId, 'metaSync', 'publish requests')
+    if (limited) return limited
+
+    const body = (await request.json()) as {
+      campaignId?: string
+      creativeIds?: string[]
+      linkUrl?: string
+      pageId?: string
+      pixelId?: string
+      conversionEvent?: string
+      activate?: boolean
+      targeting?: Record<string, unknown>
     }
 
-    const campaign = await db.campaign.findUnique({
-      where: { id: campaignId, userId },
-    }) as Record<string, unknown> | null
-
-    if (!campaign) {
-      return Response.json(
-        { error: 'Campaign not found' },
-        { status: 404 }
-      )
+    if (!body.campaignId) {
+      return Response.json({ error: 'campaignId is required' }, { status: 400 })
     }
 
-    const conn = await getMetaConnection(userId)
-    if (!conn || !conn.adAccountId) {
-      return Response.json(
-        { error: 'No Meta ad account connected. Please connect and select an ad account first.' },
-        { status: 400 }
-      )
+    // Budget caps are enforced here too, not only in the agent path — a user
+    // clicking Publish in the UI is just as capable of blowing the cap.
+    const budget = await checkBudget(userId, 'publish_full_campaign', {
+      ...body,
+    } as Record<string, unknown>)
+    if (!budget.allowed) {
+      return Response.json({ error: budget.reason, blocked: 'budget_guardrail' }, { status: 422 })
     }
 
-    const status = campaign.status === 'active' ? 'ACTIVE' : 'PAUSED'
-    const mcp = await getMCPClient(userId)
-    const result = await mcp.callTool('create_campaign', {
-      account_id: `act_${normalizeAdAccountId(conn.adAccountId)}`,
-      name: campaign.name as string,
-      objective: campaign.objective as string,
-      status,
-      daily_budget: campaign.budgetType === 'daily' ? Math.round((campaign.budget as number) * 100) : undefined,
-      lifetime_budget: campaign.budgetType === 'lifetime' ? Math.round((campaign.budget as number) * 100) : undefined,
-      start_time: campaign.startDate ? new Date(campaign.startDate as string).toISOString() : undefined,
-      stop_time: campaign.endDate ? new Date(campaign.endDate as string).toISOString() : undefined,
+    const result = await publishFullCampaign({
+      userId,
+      campaignId: body.campaignId,
+      creativeIds: body.creativeIds,
+      linkUrl: body.linkUrl,
+      pageId: body.pageId,
+      pixelId: body.pixelId,
+      conversionEvent: body.conversionEvent,
+      activate: Boolean(body.activate),
+      targeting: body.targeting as never,
     })
 
-    if (result.success && result.campaign_id) {
-      const updated = await db.campaign.update({
-        where: { id: campaignId, userId },
-        data: {
-          metaCampaignId: result.campaign_id,
-          status: status.toLowerCase(),
-        },
-      })
-      return Response.json({
-        success: true,
-        campaign: updated,
-        metaCampaignId: result.campaign_id,
-        message: result.message,
-      })
-    }
-
-    return Response.json(
-      { error: result.message || 'Failed to publish campaign to Meta' },
-      { status: 500 }
-    )
+    return Response.json(result, { status: result.success ? 200 : 400 })
   } catch (error) {
     return handleError(error, 'Failed to publish campaign')
   }

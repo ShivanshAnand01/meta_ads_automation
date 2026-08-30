@@ -32,7 +32,8 @@ interface StatusResponse {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const requestSecret = request.headers.get('x-runner-secret')
   const envCheck = validateSupabaseEnv()
 
   const status: StatusResponse = {
@@ -86,6 +87,12 @@ export async function GET() {
       'knowledge_documents',
       'knowledge_chunks',
       'generated_images',
+      // These back ask_user_question and chat attachments — the two most
+      // recently added features. Omitting them meant a missing table in
+      // production still reported a cheerful 200 while the feature was dead.
+      'pending_questions',
+      'ai_message_attachments',
+      'rate_limits',
     ]
 
     const tableChecks = await Promise.all(coreTables.map(async (t) => ({ table: t, exists: await tableExists(supabase, t) })))
@@ -115,6 +122,20 @@ export async function GET() {
     status.supabase.connected &&
     status.supabase.tables.includes('knowledge_documents') &&
     status.supabase.tables.includes('knowledge_chunks')
+
+  // The full payload lists every table and confirms which secrets are
+  // configured. That is useful for us and free reconnaissance for anyone else,
+  // so detail requires the runner secret.
+  const detailed = process.env.RUNNER_SECRET
+    ? requestSecret === process.env.RUNNER_SECRET
+    : true
+
+  if (!detailed) {
+    return NextResponse.json(
+      { ok: allOk, status: allOk ? 'healthy' : 'degraded' },
+      { status: allOk ? 200 : 503 },
+    )
+  }
 
   return NextResponse.json(status, { status: allOk ? 200 : 503 })
 }

@@ -1,14 +1,22 @@
 import { requireUserId, handleError } from '@/lib/supabase/server'
 import { getSupabaseServer } from '@/lib/supabase/server'
 
+// Vercel kills a function at its maxDuration. Without this the default
+// (10s Hobby / 15s Pro) truncates long AI work mid-stream.
+import { enforceRateLimit } from '@/lib/rate-limit'
+
+export const maxDuration = 60
+
+
 const MAX_FILE_SIZE = 10 * 1024 * 1024
 
+// SVG is deliberately excluded. An SVG is executable markup, and serving one
+// from our own storage origin is a stored-XSS vector.
 const ALLOWED_IMAGE_TYPES = [
   'image/jpeg',
   'image/png',
   'image/webp',
   'image/gif',
-  'image/svg+xml',
 ]
 
 const ALLOWED_DOC_TYPES = [
@@ -33,6 +41,9 @@ export async function POST(request: Request) {
   try {
     const userId = await requireUserId()
 
+    const limited = await enforceRateLimit(userId, 'upload', 'uploads')
+    if (limited) return limited
+
     const formData = await request.formData()
     const file = formData.get('file') as File | null
     const rawBucket = (formData.get('bucket') as string) || 'chat-attachments'
@@ -50,7 +61,11 @@ export async function POST(request: Request) {
     const isDoc = ALLOWED_DOC_TYPES.includes(file.type)
     if (!isImage && !isDoc) {
       return Response.json(
-        { error: `File type "${file.type}" not allowed. Images and PDFs only.` },
+        {
+          error:
+            `File type "${file.type}" is not allowed. Accepted: JPEG, PNG, WebP, GIF images, ` +
+            `and PDF, TXT, CSV or JSON documents. SVG is not accepted for security reasons.`,
+        },
         { status: 415 }
       )
     }
@@ -79,13 +94,28 @@ export async function POST(request: Request) {
       )
     }
 
-    const { data: urlData } = supabase.storage
+    // Signed URL, not public. These buckets hold the client's business
+    // documents and unreleased ad creative; a public URL is readable by anyone
+    // who ever sees it, forever, with no way to revoke it.
+    const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 7
+    let url: string
+    const { data: signed, error: signError } = await supabase.storage
       .from(bucket)
-      .getPublicUrl(filePath)
+      .createSignedUrl(filePath, SIGNED_URL_TTL_SECONDS)
+
+    if (signed?.signedUrl) {
+      url = signed.signedUrl
+    } else {
+      // Older deployments may still have public buckets — keep working while
+      // the storage migration is applied, but make the gap visible.
+      console.warn('[upload] signed URL unavailable, falling back to public URL:', signError?.message)
+      url = supabase.storage.from(bucket).getPublicUrl(filePath).data.publicUrl
+    }
 
     return Response.json({
       success: true,
-      url: urlData.publicUrl,
+      url,
+      signedUrlExpiresIn: signed?.signedUrl ? SIGNED_URL_TTL_SECONDS : null,
       path: data.path,
       bucket,
       fileName: file.name,

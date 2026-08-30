@@ -111,6 +111,9 @@ export function Sidebar() {
         animate={{ opacity: 1 }}
         className="fixed left-4 top-4 z-50 flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-indigo-700 text-white shadow-xl md:hidden"
         onClick={() => setMobileOpen(!mobileOpen)}
+        aria-label={mobileOpen ? 'Close navigation menu' : 'Open navigation menu'}
+        aria-expanded={mobileOpen}
+        aria-controls="primary-navigation"
       >
         <AnimatePresence mode="wait">
           {mobileOpen ? (
@@ -140,6 +143,7 @@ export function Sidebar() {
 
       {/* Sidebar */}
       <motion.aside
+        aria-label="Sidebar"
         initial={{ x: -280 }}
         animate={{ x: 0 }}
         transition={{ type: 'spring', stiffness: 260, damping: 30 }}
@@ -167,12 +171,12 @@ export function Sidebar() {
             <h1 className="text-lg font-bold bg-gradient-to-r from-violet-300 via-fuchsia-300 to-pink-300 bg-clip-text text-transparent">
               AdManager
             </h1>
-            <p className="text-[11px] text-white/40 font-medium tracking-wide">META ADS PLATFORM</p>
+            <p className="text-[11px] text-white/65 font-medium tracking-wide">META ADS PLATFORM</p>
           </div>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 space-y-1.5 overflow-y-auto scrollbar-thin px-3 py-4">
+        <nav id="primary-navigation" aria-label="Main navigation" className="flex-1 space-y-1.5 overflow-y-auto scrollbar-thin px-3 py-4">
           {navItems.map((item, index) => {
             const isActive =
               item.href === '/'
@@ -189,11 +193,12 @@ export function Sidebar() {
                 <Link
                   href={item.href}
                   onClick={() => setMobileOpen(false)}
+                  aria-current={isActive ? 'page' : undefined}
                   className={cn(
                     'group relative flex items-center gap-3 rounded-xl px-3 py-3 transition-all duration-200',
                     isActive
                       ? 'bg-white/[0.08] text-white'
-                      : 'text-white/50 hover:text-white/90 hover:bg-white/[0.04]'
+                      : 'text-white/70 hover:text-white/90 hover:bg-white/[0.04]'
                   )}
                 >
                   {/* Active indicator bar */}
@@ -212,7 +217,7 @@ export function Sidebar() {
                       ? `bg-gradient-to-br ${item.color} shadow-md`
                       : 'bg-white/[0.05] group-hover:bg-white/[0.08]'
                   )}>
-                    <Icon className={cn('h-4 w-4', isActive ? 'text-white' : 'text-white/60 group-hover:text-white/80')} />
+                    <Icon aria-hidden="true" className={cn('h-4 w-4', isActive ? 'text-white' : 'text-white/70 group-hover:text-white')} />
                   </div>
 
                   {/* Label and description */}
@@ -227,7 +232,7 @@ export function Sidebar() {
                     </div>
                     <p className={cn(
                       'text-[11px] mt-0.5 transition-colors',
-                      isActive ? 'text-white/60' : 'text-white/30'
+                      isActive ? 'text-white/60' : 'text-white/60'
                     )}>
                       {item.desc}
                     </p>
@@ -243,23 +248,24 @@ export function Sidebar() {
           <div className="rounded-xl bg-white/[0.04] p-3 ring-1 ring-white/[0.06]">
             <div className="flex items-center gap-2.5">
               <div className="relative flex h-2.5 w-2.5">
-                <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60 animate-ping" />
+                <span aria-hidden="true" className="absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60 animate-ping motion-reduce:animate-none" />
                 <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
               </div>
               <div className="flex-1">
                 <p className="text-xs font-semibold text-white/80">System Active</p>
-                <p className="text-[10px] text-white/40">Platform online</p>
+                <p className="text-[10px] text-white/65">Platform online</p>
               </div>
               <button
                 onClick={handleSignOut}
-                className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.06] text-white/50 hover:bg-white/[0.12] hover:text-white transition-colors"
+                className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.06] text-white/70 hover:bg-white/[0.12] hover:text-white transition-colors"
                 title="Sign out"
+                aria-label="Sign out"
               >
                 <LogOut className="h-4 w-4" />
               </button>
             </div>
           </div>
-          <p className="text-[10px] text-white/25 text-center font-medium tracking-wider uppercase">
+          <p className="text-[10px] text-white/60 text-center font-medium tracking-wider uppercase">
             Built for Maharashtrian Market
           </p>
         </div>

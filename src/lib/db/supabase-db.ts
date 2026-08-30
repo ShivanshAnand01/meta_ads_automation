@@ -67,6 +67,20 @@ export function withServiceClient<T>(client: SupabaseClient, fn: () => Promise<T
   return serviceClientStorage.run(client, fn)
 }
 
+/**
+ * The Supabase client for the current execution scope: the service-role client
+ * when running inside `withServiceClient` (the autonomous runner), otherwise
+ * the cookie-bound user client.
+ *
+ * Callers that drop to raw `supabase.from(...)` MUST use this rather than
+ * `getSupabaseServer()` directly — the latter reads request cookies, which do
+ * not exist in a background run, so the query silently fails or returns
+ * nothing under RLS.
+ */
+export async function getScopedSupabase(): Promise<SupabaseClient> {
+  return serviceClientStorage.getStore() ?? (await getSupabaseServer())
+}
+
 type Where = Record<string, unknown>
 type Query = {
   where?: Where

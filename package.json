@@ -11,12 +11,12 @@
     "db:generate": "node --env-file=.env.local node_modules/prisma/build/index.js generate",
     "db:push": "node --env-file=.env.local node_modules/prisma/build/index.js db push",
     "db:migrate": "node --env-file=.env.local node_modules/prisma/build/index.js migrate dev",
-    "db:deploy": "node --env-file=.env.local node_modules/prisma/build/index.js migrate deploy"
+    "db:deploy": "node --env-file=.env.local node_modules/prisma/build/index.js migrate deploy",
+    "test": "node --test --experimental-strip-types tests/*.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
     "@hookform/resolvers": "^5.4.0",
-    "@modelcontextprotocol/sdk": "^1.30.0",
     "@prisma/client": "^7.8.0",
     "@supabase/ssr": "^0.12.3",
     "@supabase/supabase-js": "^2.110.8",
@@ -28,7 +28,6 @@
     "date-fns": "^4.4.0",
     "framer-motion": "^12.42.2",
     "lucide-react": "^1.24.0",
-    "meta-ads-mcp": "^1.1.0",
     "next": "^16.2.12",
     "next-themes": "^0.4.6",
     "pdf-parse": "^1.1.1",

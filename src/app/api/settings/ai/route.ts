@@ -5,9 +5,9 @@ import { storeSecret, SECRET_KEYS } from '@/lib/secrets'
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const PROVIDER_DEFAULT_MODEL: Record<string, string> = {
-  anthropic: 'claude-3-5-sonnet-20241022',
+  anthropic: 'claude-sonnet-5',
   ollama: 'llama3',
-  openai: 'gpt-4o-mini',
+  openai: 'gpt-4.1-mini',
   groq: 'llama-3.3-70b-versatile',
 }
 

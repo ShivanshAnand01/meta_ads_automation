@@ -13,6 +13,13 @@ import { retrieveRelevant } from '@/lib/ai/rag'
 import { getMetaConnection } from '@/lib/meta/user-client'
 import { cancelPendingQuestionsForConversation } from '@/lib/ai/pending-questions'
 
+// Vercel kills a function at its maxDuration. Without this the default
+// (10s Hobby / 15s Pro) truncates long AI work mid-stream.
+import { enforceRateLimit } from '@/lib/rate-limit'
+
+export const maxDuration = 300
+
+
 /**
  * Sanitize loaded chat messages to ensure OpenAI API consistency:
  * every assistant message with tool_calls must be followed by tool messages
@@ -97,6 +104,9 @@ function sanitizeMessages(messages: ChatMessage[]): ChatMessage[] {
 export async function POST(request: Request) {
   try {
     const userId = await requireUserId()
+
+    const limited = await enforceRateLimit(userId, 'aiChat', 'AI chat messages')
+    if (limited) return limited
     const body = await request.json()
     const { message, conversationId, attachments } = body as {
       message: string

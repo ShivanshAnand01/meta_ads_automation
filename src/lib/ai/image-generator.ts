@@ -6,34 +6,57 @@ export interface ImageGenResult {
   provider: string
   error?: string
   promptUsed?: string
+  aspectRatio?: AspectRatio
+  width?: number
+  height?: number
 }
+
+export type AspectRatio = '1:1' | '4:5' | '9:16' | '1.91:1' | '16:9'
 
 export interface ImageGenOptions {
   size?: string
   style?: string
   quality?: 'standard' | 'hd'
-  aspectRatio?: '1:1' | '4:5' | '9:16' | '1.91:1' | '16:9'
+  aspectRatio?: AspectRatio
   brandColors?: string[]
   negativePrompt?: string
   model?: string
   count?: number
+  /** Overall wall-clock budget. Kept under the route's maxDuration. */
+  timeoutMs?: number
 }
 
-// Meta Ads recommended aspect ratios mapped to pixel dimensions.
-const ASPECT_RATIO_DIMENSIONS: Record<string, { w: number; h: number }> = {
-  '1:1':     { w: 1080, h: 1080 },  // Feed (square)
-  '4:5':     { w: 1080, h: 1350 },  // Feed (portrait)
-  '9:16':    { w: 1080, h: 1920 },  // Stories / Reels
-  '1.91:1':  { w: 1200, h: 628 },   // Link ad (landscape)
-  '16:9':    { w: 1920, h: 1080 },  // Landscape
+/**
+ * Meta's recommended pixel dimensions per placement.
+ *   1:1     feed, square
+ *   4:5     feed, portrait — the highest-performing feed ratio on mobile
+ *   9:16    Stories / Reels
+ *   1.91:1  link ad, landscape
+ *   16:9    landscape video/image
+ */
+export const ASPECT_RATIO_DIMENSIONS: Record<AspectRatio, { w: number; h: number }> = {
+  '1:1': { w: 1080, h: 1080 },
+  '4:5': { w: 1080, h: 1350 },
+  '9:16': { w: 1080, h: 1920 },
+  '1.91:1': { w: 1200, h: 628 },
+  '16:9': { w: 1920, h: 1080 },
 }
 
-// GPT image model supported sizes.
+/** The placement set a single ad actually needs to cover feed + stories. */
+export const META_PLACEMENT_SET: AspectRatio[] = ['1:1', '4:5', '9:16']
+
 const GPT_IMAGE_SIZES = new Set(['1024x1024', '1536x1024', '1024x1536'])
 
-// Pollinations models (free, no API key required).
-const POLLINATIONS_MODELS = ['flux', 'sana', 'turbo'] as const
+const POLLINATIONS_MODELS = ['flux', 'turbo'] as const
 type PollinationsModel = (typeof POLLINATIONS_MODELS)[number]
+
+/**
+ * Per-attempt timeout. The old code allowed 90s per provider across a 3-link
+ * fallback chain — 270s worst case, on a function that is killed at 60s. So
+ * generation timed out before it could ever fail over.
+ */
+const PROVIDER_TIMEOUT_MS = 22_000
+const DEFAULT_TOTAL_BUDGET_MS = 50_000
 
 function resolveDimensions(options?: ImageGenOptions): { w: number; h: number } {
   if (options?.aspectRatio && ASPECT_RATIO_DIMENSIONS[options.aspectRatio]) {
@@ -44,47 +67,68 @@ function resolveDimensions(options?: ImageGenOptions): { w: number; h: number } 
   return { w: w || 1024, h: h || 1024 }
 }
 
-function resolveGptImageSize(options?: ImageGenOptions): string {
+/**
+ * Map an aspect ratio to the nearest size gpt-image-1 supports.
+ *
+ * Portrait ratios map to the PORTRAIT size and landscape ratios to the
+ * LANDSCAPE size. The previous mapping had these inverted — 4:5 (portrait)
+ * produced a landscape image and 1.91:1 (landscape) produced a portrait one,
+ * so every feed-portrait and link ad came out the wrong shape and was cropped
+ * by Meta.
+ */
+export function resolveGptImageSize(options?: ImageGenOptions): string {
   if (options?.aspectRatio) {
     switch (options.aspectRatio) {
-      case '1:1': return '1024x1024'
-      case '9:16':
-      case '1.91:1': return '1024x1536'
-      case '16:9':
-      case '4:5': return '1536x1024'
+      case '1:1':
+        return '1024x1024'
+      case '4:5': // portrait
+      case '9:16': // portrait
+        return '1024x1536'
+      case '1.91:1': // landscape
+      case '16:9': // landscape
+        return '1536x1024'
     }
   }
   const size = options?.size || '1024x1024'
-  // Map legacy DALL-E sizes to GPT image sizes
   if (size === '1792x1024') return '1536x1024'
   if (size === '1024x1792') return '1024x1536'
   return GPT_IMAGE_SIZES.has(size) ? size : '1024x1024'
 }
 
+/**
+ * Build the image prompt.
+ *
+ * Text is deliberately excluded from the generated image: diffusion models
+ * cannot render legible Devanagari, and a garbled Marathi headline baked into
+ * the pixels is unusable and un-editable. Copy is composited over the image
+ * afterwards as real text.
+ */
 function buildEnhancedPrompt(prompt: string, options?: ImageGenOptions): string {
   const parts: string[] = [prompt]
 
   parts.push(
     'Professional digital marketing ad creative for Facebook/Instagram Meta Ads. ' +
-    'High quality, clean modern design, vibrant colors, sharp focus, ' +
-    'suitable for Indian / Maharashtrian audience marketing. ' +
-    'No watermarks, no logos unless specified, no text artifacts. ' +
-    'Commercial advertising photography style.'
+      'High quality, clean modern composition with clear negative space in the upper third for a headline overlay, ' +
+      'vibrant colours, sharp focus, suitable for an Indian / Maharashtrian audience. ' +
+      'Commercial advertising photography style.',
   )
 
-  if (options?.brandColors && options.brandColors.length > 0) {
-    parts.push(`Brand color palette: ${options.brandColors.join(', ')}. Incorporate these colors into the design.`)
+  parts.push(
+    'IMPORTANT: absolutely no text, no letters, no words, no numbers, no captions, no watermarks and no logos ' +
+      'anywhere in the image. The image must be purely visual.',
+  )
+
+  if (options?.brandColors?.length) {
+    parts.push(`Brand colour palette: ${options.brandColors.join(', ')}. Build the composition around these colours.`)
   }
 
-  if (options?.style === 'natural') {
-    parts.push('Natural, realistic photographic style.')
-  } else {
-    parts.push('Vivid, eye-catching, high-contrast advertising style.')
-  }
+  parts.push(
+    options?.style === 'natural'
+      ? 'Natural, realistic photographic style.'
+      : 'Vivid, eye-catching, high-contrast advertising style.',
+  )
 
-  if (options?.negativePrompt) {
-    parts.push(`AVOID: ${options.negativePrompt}`)
-  }
+  if (options?.negativePrompt) parts.push(`AVOID: ${options.negativePrompt}`)
 
   return parts.join(' ')
 }
@@ -92,123 +136,149 @@ function buildEnhancedPrompt(prompt: string, options?: ImageGenOptions): string 
 async function generateViaGptImage(
   apiKey: string,
   prompt: string,
-  options?: ImageGenOptions,
+  options: ImageGenOptions | undefined,
+  signal: AbortSignal,
 ): Promise<ImageGenResult> {
   const enhancedPrompt = buildEnhancedPrompt(prompt, options)
   const size = resolveGptImageSize(options)
-  // Map quality: standard → medium, hd → high, default → high (best quality)
-  const qualityMap: Record<string, 'low' | 'medium' | 'high'> = {
-    standard: 'medium',
-    hd: 'high',
-  }
+  const qualityMap: Record<string, 'low' | 'medium' | 'high'> = { standard: 'medium', hd: 'high' }
   const quality = (options?.quality ? qualityMap[options.quality] : 'high') as 'low' | 'medium' | 'high'
 
   const response = await fetch('https://api.openai.com/v1/images/generations', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
       model: 'gpt-image-1',
       prompt: enhancedPrompt,
       n: 1,
-      size: size as '1024x1024' | '1536x1024' | '1024x1536',
+      size,
       quality,
       output_format: 'png',
     }),
+    signal,
   })
 
   if (!response.ok) {
     const errText = await response.text()
-    console.error('GPT image error:', errText)
-    throw new Error(`GPT image error: ${response.status} — ${errText.slice(0, 200)}`)
+    throw new Error(`GPT image error ${response.status}: ${errText.slice(0, 200)}`)
   }
 
   const data = await response.json()
   const b64 = data.data?.[0]?.b64_json
-  if (b64) {
-    const imageUrl = `data:image/png;base64,${b64}`
-    return { success: true, imageUrl, provider: 'gpt-image-1', promptUsed: enhancedPrompt }
-  }
-  throw new Error('GPT image returned no image data')
-}
+  if (!b64) throw new Error('GPT image returned no image data')
 
-async function generateViaPollinations(
-  prompt: string,
-  options?: ImageGenOptions,
-  model: PollinationsModel = 'flux',
-): Promise<ImageGenResult> {
-  const enhancedPrompt = buildEnhancedPrompt(prompt, options)
-  const { w, h } = resolveDimensions(options)
-  const encoded = encodeURIComponent(enhancedPrompt.slice(0, 1200))
-  const seed = Math.floor(Math.random() * 1000000)
-
-  const imageUrl = `https://image.pollinations.ai/prompt/${encoded}?width=${w}&height=${h}&seed=${seed}&nologo=true&model=${model}`
-
-  // Actually GET the image to verify it was generated successfully.
-  // HEAD is unreliable with Pollinations (often returns non-image content-type
-  // or 500 while the image is still generating). A GET waits for the full
-  // image, so we know it's valid before returning the URL. The same URL
-  // (same seed) will return the cached image on subsequent fetches.
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 90_000)
-  try {
-    const res = await fetch(imageUrl, { signal: controller.signal })
-    clearTimeout(timeout)
-    const contentType = res.headers.get('content-type') || ''
-    if (res.ok && contentType.startsWith('image/')) {
-      return { success: true, imageUrl, provider: `pollinations-${model}`, promptUsed: enhancedPrompt }
-    }
-    throw new Error(`Pollinations ${model} returned ${res.status} (${contentType || 'no content-type'})`)
-  } catch (err) {
-    clearTimeout(timeout)
-    if (err instanceof Error && err.name === 'AbortError') {
-      throw new Error(`Pollinations ${model} timed out after 90s`)
-    }
-    throw err
+  const [w, h] = size.split('x').map(Number)
+  return {
+    success: true,
+    imageUrl: `data:image/png;base64,${b64}`,
+    provider: 'gpt-image-1',
+    promptUsed: enhancedPrompt,
+    aspectRatio: options?.aspectRatio,
+    width: w,
+    height: h,
   }
 }
 
 /**
- * Generate an ad creative image using AI. Falls through a provider chain:
- *   1. GPT image (gpt-image-1) — best quality, requires an OpenAI API key
- *   2. Pollinations flux (free, no key)
- *   3. Pollinations sana (free, no key)
- *   4. Pollinations turbo (free, faster)
+ * Free fallback. Useful for development and as a last resort, but it is an
+ * unauthenticated public service with no SLA, no content moderation and no
+ * commercial licensing — see the note in generateAdImage before relying on it
+ * for client work.
+ */
+async function generateViaPollinations(
+  prompt: string,
+  options: ImageGenOptions | undefined,
+  model: PollinationsModel,
+  seed: number,
+  signal: AbortSignal,
+): Promise<ImageGenResult> {
+  const enhancedPrompt = buildEnhancedPrompt(prompt, options)
+  const { w, h } = resolveDimensions(options)
+  const encoded = encodeURIComponent(enhancedPrompt.slice(0, 1200))
+  const imageUrl = `https://image.pollinations.ai/prompt/${encoded}?width=${w}&height=${h}&seed=${seed}&nologo=true&model=${model}`
+
+  const res = await fetch(imageUrl, { signal })
+  const contentType = res.headers.get('content-type') || ''
+  if (res.ok && contentType.startsWith('image/')) {
+    return {
+      success: true,
+      imageUrl,
+      provider: `pollinations-${model}`,
+      promptUsed: enhancedPrompt,
+      aspectRatio: options?.aspectRatio,
+      width: w,
+      height: h,
+    }
+  }
+  throw new Error(`Pollinations ${model} returned ${res.status} (${contentType || 'no content-type'})`)
+}
+
+/** Run one provider attempt under both a per-attempt and a total deadline. */
+async function withTimeout<T>(fn: (signal: AbortSignal) => Promise<T>, budgetMs: number): Promise<T> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), Math.min(PROVIDER_TIMEOUT_MS, budgetMs))
+  try {
+    return await fn(controller.signal)
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * Generate an ad creative image, falling through a provider chain:
+ *   1. gpt-image-1 — production quality, needs an OpenAI key
+ *   2. Pollinations flux / turbo — free, no key, development-grade only
  *
- * The OpenAI key can come from the main provider (if OpenAI) or from the
- * embedding key (which is always an OpenAI key). This ensures image
- * generation uses the best model available even when the main AI provider
- * is Anthropic, Groq, or Ollama.
- *
- * This ensures image generation ALWAYS works, even without an OpenAI key.
+ * PRODUCTION NOTE: Pollinations is an unauthenticated free service with no
+ * SLA, no moderation and no commercial licence or indemnity, and the prompt is
+ * embedded in a publicly reachable URL. Set `IMAGE_FALLBACK_ENABLED=false` to
+ * turn the fallback off for client accounts and surface a clear error instead
+ * of quietly shipping a lower-provenance image into a paid ad.
  */
 export async function generateAdImage(
-  providerType: AIProviderType,
+  _providerType: AIProviderType,
   apiKey: string | null | undefined,
   prompt: string,
   options?: ImageGenOptions,
 ): Promise<ImageGenResult> {
   const errors: string[] = []
+  const deadline = Date.now() + (options?.timeoutMs ?? DEFAULT_TOTAL_BUDGET_MS)
+  const remaining = () => deadline - Date.now()
 
-  // 1. GPT image (best quality, requires an OpenAI key)
   if (apiKey) {
     try {
-      return await generateViaGptImage(apiKey, prompt, options)
+      return await withTimeout((signal) => generateViaGptImage(apiKey, prompt, options, signal), remaining())
     } catch (err) {
-      errors.push(err instanceof Error ? err.message : 'GPT image failed')
-      console.warn('GPT image generation failed, falling back to Pollinations:', errors[errors.length - 1])
+      const message = err instanceof Error ? err.message : 'GPT image failed'
+      errors.push(message)
+      console.warn('[image] gpt-image-1 failed, falling back:', message)
+    }
+  } else {
+    errors.push('No OpenAI API key configured for image generation')
+  }
+
+  const fallbackEnabled = process.env.IMAGE_FALLBACK_ENABLED !== 'false'
+  if (!fallbackEnabled) {
+    return {
+      success: false,
+      imageUrl: '',
+      provider: 'none',
+      error: `Image generation failed and the free fallback is disabled for this account: ${errors.join(' | ')}`,
     }
   }
 
-  // 2-4. Pollinations free fallback chain (always works, no key needed)
   for (const model of POLLINATIONS_MODELS) {
+    if (remaining() < 5_000) {
+      errors.push('Ran out of time before trying the remaining image providers')
+      break
+    }
     try {
-      return await generateViaPollinations(prompt, options, model)
+      const seed = Math.floor(Math.random() * 1_000_000)
+      return await withTimeout((signal) => generateViaPollinations(prompt, options, model, seed, signal), remaining())
     } catch (err) {
-      errors.push(err instanceof Error ? err.message : `${model} failed`)
-      console.warn(`Pollinations ${model} failed:`, errors[errors.length - 1])
+      const message = err instanceof Error ? (err.name === 'AbortError' ? `${model} timed out` : err.message) : `${model} failed`
+      errors.push(message)
+      console.warn(`[image] pollinations ${model} failed:`, message)
     }
   }
 
@@ -221,9 +291,41 @@ export async function generateAdImage(
 }
 
 /**
- * Generate multiple ad image variations from the same prompt by using
- * different seeds. Useful for A/B testing ad creatives.
+ * Generate the same creative concept at every ratio an ad needs (feed square,
+ * feed portrait, story). Running them concurrently keeps the whole set inside
+ * one function invocation instead of three sequential timeouts.
  */
+export async function generatePlacementSet(
+  providerType: AIProviderType,
+  apiKey: string | null | undefined,
+  prompt: string,
+  ratios: AspectRatio[] = META_PLACEMENT_SET,
+  options?: ImageGenOptions,
+): Promise<Record<string, ImageGenResult>> {
+  const entries = await Promise.all(
+    ratios.map(async (aspectRatio) => {
+      const result = await generateAdImage(providerType, apiKey, prompt, { ...options, aspectRatio })
+      return [aspectRatio, result] as const
+    }),
+  )
+  return Object.fromEntries(entries)
+}
+
+/**
+ * Distinct creative variations for A/B testing.
+ *
+ * Each variation gets a different visual angle appended to the prompt. The old
+ * implementation re-ran the identical prompt N times, which for gpt-image-1
+ * (no seed control) meant paying N times for near-duplicates.
+ */
+const VARIATION_ANGLES = [
+  'hero product shot, centred composition, studio lighting',
+  'lifestyle scene showing the product in everyday use',
+  'close-up detail shot with shallow depth of field',
+  'flat-lay overhead composition on a clean surface',
+  'aspirational outcome scene showing the result of using the product',
+]
+
 export async function generateImageVariations(
   providerType: AIProviderType,
   apiKey: string | null | undefined,
@@ -231,43 +333,62 @@ export async function generateImageVariations(
   count: number,
   options?: ImageGenOptions,
 ): Promise<ImageGenResult[]> {
-  const results: ImageGenResult[] = []
-  for (let i = 0; i < count; i++) {
-    const result = await generateAdImage(providerType, apiKey, prompt, {
-      ...options,
-      size: options?.size,
-    })
-    results.push(result)
-  }
-  return results
+  const n = Math.max(1, Math.min(count, VARIATION_ANGLES.length))
+  return Promise.all(
+    Array.from({ length: n }, (_, i) =>
+      generateAdImage(providerType, apiKey, `${prompt}. Visual treatment: ${VARIATION_ANGLES[i]}`, options),
+    ),
+  )
 }
 
+type StorageLike = {
+  storage: {
+    from: (bucket: string) => {
+      upload: (
+        path: string,
+        body: Blob,
+        options?: Record<string, unknown>,
+      ) => Promise<{ data: { path: string } | null; error: { message: string } | null }>
+      createSignedUrl: (
+        path: string,
+        expiresIn: number,
+      ) => Promise<{ data: { signedUrl: string } | null; error: { message: string } | null }>
+      getPublicUrl: (path: string) => { data: { publicUrl: string } }
+    }
+  }
+}
+
+/**
+ * Persist a generated image to Supabase storage.
+ *
+ * Returns a long-lived signed URL rather than a public one: the bucket holds
+ * the client's unreleased ad creative, and a public URL is readable by anyone
+ * who ever sees it, forever.
+ */
 export async function saveImageToStorage(
   imageUrl: string,
   userId: string,
-  supabase: { storage: { from: (bucket: string) => { upload: (path: string, body: Blob, options?: Record<string, unknown>) => Promise<{ data: { path: string } | null; error: { message: string } | null }> ; getPublicUrl: (path: string) => { data: { publicUrl: string } } } } }
+  supabase: StorageLike,
+  opts?: { signedUrlTtlSeconds?: number },
 ): Promise<{ url: string; path: string } | null> {
   try {
     let blob: Blob
     let contentType: string
 
-    // Handle data URLs (from gpt-image-1 base64 response) directly,
-    // without going through fetch — more reliable across Node.js versions.
     if (imageUrl.startsWith('data:')) {
-      const m = imageUrl.match(/^data:(image\/[\w+]+);base64,(.+)$/)
-      if (!m) {
-        console.error('Invalid data URL format')
+      const match = imageUrl.match(/^data:(image\/[\w+]+);base64,(.+)$/)
+      if (!match) {
+        console.error('[image] invalid data URL format')
         return null
       }
-      contentType = m[1]
-      const binary = atob(m[2])
+      contentType = match[1]
+      const binary = atob(match[2])
       const bytes = new Uint8Array(binary.length)
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
       blob = new Blob([bytes], { type: contentType })
     } else {
-      // Remote URL — fetch with timeout
       const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), 90_000)
+      const timeout = setTimeout(() => controller.abort(), 30_000)
       let res: Response
       try {
         res = await fetch(imageUrl, { signal: controller.signal })
@@ -275,44 +396,47 @@ export async function saveImageToStorage(
         clearTimeout(timeout)
       }
       if (!res.ok) {
-        console.error('Image fetch failed:', res.status, res.statusText)
+        console.error('[image] fetch failed:', res.status, res.statusText)
         return null
       }
       contentType = res.headers.get('content-type') || ''
       if (!contentType.startsWith('image/')) {
-        console.error('Image fetch returned non-image content-type:', contentType)
+        console.error('[image] non-image content-type:', contentType)
         return null
       }
       blob = await res.blob()
     }
 
     if (blob.size < 1000) {
-      console.error('Image blob too small, likely an error response:', blob.size, 'bytes')
+      console.error('[image] blob too small, likely an error response:', blob.size)
       return null
     }
+
     const ext = contentType.includes('jpeg') || contentType.includes('jpg') ? 'jpg' : 'png'
     const fileName = `ad-creative-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
     const filePath = `${userId}/${fileName}`
 
-    const { data, error } = await supabase.storage
-      .from('ad-creative-images')
-      .upload(filePath, blob, {
-        contentType,
-        cacheControl: '3600',
-      })
-
+    const bucket = supabase.storage.from('ad-creative-images')
+    const { data, error } = await bucket.upload(filePath, blob, { contentType, cacheControl: '3600' })
     if (error) {
-      console.error('Storage save error:', error)
+      console.error('[image] storage save error:', error)
       return null
     }
 
-    const { data: urlData } = supabase.storage
-      .from('ad-creative-images')
-      .getPublicUrl(data?.path || filePath)
+    const path = data?.path || filePath
+    const ttl = opts?.signedUrlTtlSeconds ?? 60 * 60 * 24 * 365
 
-    return { url: urlData.publicUrl, path: data?.path || filePath }
+    const { data: signed, error: signError } = await bucket.createSignedUrl(path, ttl)
+    if (!signError && signed?.signedUrl) {
+      return { url: signed.signedUrl, path }
+    }
+
+    // Bucket may still be public on older deployments — fall back so image
+    // generation keeps working while the storage migration is applied.
+    console.warn('[image] signed URL unavailable, falling back to public URL:', signError?.message)
+    return { url: bucket.getPublicUrl(path).data.publicUrl, path }
   } catch (err) {
-    console.error('Failed to save image to storage:', err)
+    console.error('[image] failed to save to storage:', err)
     return null
   }
 }

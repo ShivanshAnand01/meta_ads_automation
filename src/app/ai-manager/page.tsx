@@ -120,17 +120,17 @@ type RawConversation = {
 }
 
 const providerInfo = {
-  anthropic: { name: 'Claude (Anthropic)', icon: Sparkles, needsApiKey: true, needsBaseUrl: false, defaultBaseUrl: '', defaultModel: 'claude-3-5-sonnet-20241022' },
+  anthropic: { name: 'Claude (Anthropic)', icon: Sparkles, needsApiKey: true, needsBaseUrl: false, defaultBaseUrl: '', defaultModel: 'claude-sonnet-5' },
   ollama: { name: 'Ollama (Local)', icon: Cpu, needsApiKey: false, needsBaseUrl: true, defaultBaseUrl: 'http://localhost:11434', defaultModel: 'llama3' },
-  openai: { name: 'OpenAI GPT', icon: Key, needsApiKey: true, needsBaseUrl: false, defaultBaseUrl: '', defaultModel: 'gpt-4o-mini' },
+  openai: { name: 'OpenAI GPT', icon: Key, needsApiKey: true, needsBaseUrl: false, defaultBaseUrl: '', defaultModel: 'gpt-4.1-mini' },
   groq: { name: 'Groq', icon: Server, needsApiKey: true, needsBaseUrl: false, defaultBaseUrl: '', defaultModel: 'llama-3.3-70b-versatile' },
 }
 
 const providerModels: Record<string, { value: string; label: string }[]> = {
   anthropic: [
-    { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
-    { value: 'claude-3-opus-20240229', label: 'Claude 3 Opus' },
-    { value: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku' },
+    { value: 'claude-sonnet-5', label: 'Claude Sonnet 5' },
+    { value: 'claude-opus-5', label: 'Claude Opus 5' },
+    { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
   ],
   ollama: [
     { value: 'llama3', label: 'Llama 3 (8B)' },
@@ -140,7 +140,7 @@ const providerModels: Record<string, { value: string; label: string }[]> = {
   ],
   openai: [
     { value: 'gpt-4o', label: 'GPT-4o' },
-    { value: 'gpt-4o-mini', label: 'GPT-4o Mini (Recommended)' },
+    { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini (Recommended)' },
     { value: 'gpt-4.1', label: 'GPT-4.1' },
     { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
   ],

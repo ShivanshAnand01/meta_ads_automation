@@ -1,4 +1,10 @@
 import type { AIProvider, CreativeSuggestion } from './types'
+import {
+  generateStructured,
+  creativeSuggestionSchema,
+  creativeSuggestionListSchema,
+  enforceCopyLimits,
+} from './structured'
 import type { AdCreativeData } from '@/lib/meta/types'
 
 const SYSTEM_PROMPT = `You are an expert digital marketing strategist specializing in Meta (Facebook/Instagram) Ads for the Indian market, specifically targeting the Maharashtrian audience. You understand Marathi language and culture deeply.
@@ -46,8 +52,8 @@ Respond with this JSON format:
   "reasoning": "Why this creative will work for the Maharashtrian audience (English)"
 }`
 
-  const response = await provider.generateCompletion(prompt, SYSTEM_PROMPT)
-  return parseJsonResponse<CreativeSuggestion>(response)
+  const parsed = await generateStructured(provider, creativeSuggestionSchema, prompt, SYSTEM_PROMPT)
+  return enforceCopyLimits(parsed) as unknown as CreativeSuggestion
 }
 
 export async function generateMultipleCreativeSuggestions(
@@ -89,9 +95,8 @@ Respond with this JSON format:
   ]
 }`
 
-  const response = await provider.generateCompletion(prompt, SYSTEM_PROMPT)
-  const parsed = parseJsonResponse<{ creatives: CreativeSuggestion[] }>(response)
-  return parsed.creatives
+  const parsed = await generateStructured(provider, creativeSuggestionListSchema, prompt, SYSTEM_PROMPT)
+  return parsed.creatives.map((c) => enforceCopyLimits(c)) as unknown as CreativeSuggestion[]
 }
 
 export async function suggestCreativeImprovements(
@@ -139,21 +144,7 @@ Respond with this JSON format:
   "reasoning": "Why these changes will improve performance (English)"
 }`
 
-  const response = await provider.generateCompletion(prompt, SYSTEM_PROMPT)
-  return parseJsonResponse<CreativeSuggestion>(response)
+  const parsed = await generateStructured(provider, creativeSuggestionSchema, prompt, SYSTEM_PROMPT)
+  return enforceCopyLimits(parsed) as unknown as CreativeSuggestion
 }
 
-function parseJsonResponse<T>(response: string): T {
-  let cleaned = response.trim()
-  if (cleaned.startsWith('```json')) {
-    cleaned = cleaned.slice(7)
-  }
-  if (cleaned.startsWith('```')) {
-    cleaned = cleaned.slice(3)
-  }
-  if (cleaned.endsWith('```')) {
-    cleaned = cleaned.slice(0, -3)
-  }
-  cleaned = cleaned.trim()
-  return JSON.parse(cleaned) as T
-}

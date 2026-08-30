@@ -54,6 +54,11 @@
 }
 
 :root {
+  /* Declaring color-scheme is what stops the browser applying its own
+     auto-darkening heuristics to form controls and scrollbars. Without it, a
+     viewer whose OS is set to dark got pale-on-white text that was almost
+     unreadable. */
+  color-scheme: light;
   --background: oklch(0.98 0.002 250);
   --foreground: oklch(0.15 0.02 250);
   --card: oklch(1 0 0 / 0.7);
@@ -93,6 +98,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0.13 0.02 250);
   --foreground: oklch(0.97 0.005 250);
   --card: oklch(0.18 0.02 250 / 0.7);
@@ -262,4 +268,41 @@
     0% { background-position: -200% 0; }
     100% { background-position: 200% 0; }
   }
+}
+
+
+/* Honour the viewer's reduced-motion preference. This app animates the
+   sidebar, page transitions and every card; for a motion-sensitive user that
+   is not decoration, it is a barrier. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Visible keyboard focus. Several interactive elements had no focus ring. */
+:focus-visible {
+  outline: 2px solid var(--ring, oklch(0.6 0.2 285));
+  outline-offset: 2px;
+}
+
+/* Skip link — the first tab stop, so keyboard users can jump the sidebar. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: 0.75rem 1rem;
+  border-radius: 0 0 0.5rem 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-weight: 600;
+}
+.skip-link:focus {
+  left: 0;
 }

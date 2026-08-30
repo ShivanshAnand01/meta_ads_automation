@@ -52,11 +52,14 @@ const nextConfig: NextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
+              // Vercel Analytics and Speed Insights are mounted in the root
+              // layout but their scripts live on va.vercel-scripts.com — the
+              // CSP was blocking both, so neither has ever reported anything.
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://va.vercel-scripts.com",
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' blob: data: https:",
               "font-src 'self'",
-              "connect-src 'self' https://*.supabase.co https://api.openai.com https://api.anthropic.com https://api.groq.com",
+              "connect-src 'self' https://*.supabase.co https://api.openai.com https://api.anthropic.com https://api.groq.com https://va.vercel-scripts.com https://vitals.vercel-insights.com",
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",

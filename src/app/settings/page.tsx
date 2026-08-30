@@ -19,7 +19,7 @@ const providerInfo = {
     needsApiKey: true,
     needsBaseUrl: false,
     defaultBaseUrl: '',
-    defaultModel: 'claude-3-5-sonnet-20241022',
+    defaultModel: 'claude-sonnet-5',
   },
   ollama: {
     name: 'Ollama (Local, Free)',
@@ -37,7 +37,7 @@ const providerInfo = {
     needsApiKey: true,
     needsBaseUrl: false,
     defaultBaseUrl: '',
-    defaultModel: 'gpt-4o-mini',
+    defaultModel: 'gpt-4.1-mini',
   },
   groq: {
     name: 'Groq (Llama/Mixtral)',

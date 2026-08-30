@@ -4,6 +4,13 @@ import { db } from '@/lib/db/supabase-db'
 import pdfParse from 'pdf-parse/lib/pdf-parse.js'
 import type { AIProviderType } from '@/lib/ai/types'
 
+// Vercel kills a function at its maxDuration. Without this the default
+// (10s Hobby / 15s Pro) truncates long AI work mid-stream.
+import { enforceRateLimit } from '@/lib/rate-limit'
+
+export const maxDuration = 120
+
+
 async function extractTextFromFile(file: File): Promise<string> {
   if (file.type === 'application/pdf') {
     const buffer = Buffer.from(await file.arrayBuffer())
@@ -26,6 +33,9 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const userId = await requireUserId()
+
+    const limited = await enforceRateLimit(userId, 'upload', 'knowledge base writes')
+    if (limited) return limited
     const contentType = request.headers.get('content-type') || ''
 
     const settings = await db.aiSettings.findUnique({ where: { userId } }) as

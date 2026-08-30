@@ -1,4 +1,5 @@
 import type { ToolDefinition } from './types'
+import { DELIVERY_TOOLS } from './tool-definitions.delivery'
 
 /**
  * LOCAL_TOOLS — tools that operate entirely on the local platform database.
@@ -398,301 +399,11 @@ export const LOCAL_TOOLS: ToolDefinition[] = [
     },
   },
 ]
-
-/**
- * MCP_TOOLS — tools that interact with the Meta Ads API. Most are routed through
- * stateless Graph API calls (no long-lived server needed). Some fall back to an
- * MCP subprocess when a long-lived runtime is available. All require a valid
- * Meta connection (access token + ad account). Spend-affecting actions require
- * approval unless auto-optimize is enabled.
- */
-export const MCP_TOOLS: ToolDefinition[] = [
-  {
-    type: 'function',
-    function: {
-      name: 'list_campaigns',
-      description:
-        'List all campaigns live on the connected Meta Ads account. ' +
-        'Returns each campaign\'s: id, name, objective, status (ACTIVE / PAUSED / DELETED), ' +
-        'dailyBudget (INR, converted from cents), lifetimeBudget (INR), startTime, stopTime, and buyingType. ' +
-        'Requires a valid Meta connection (access token + ad account ID). ' +
-        'Use this to see what is currently running on Meta, or to find a campaign ID for other Meta operations.',
-      parameters: {
-        type: 'object',
-        properties: {
-          account_id: { type: 'string', description: 'Ad account ID (auto-filled from the user\'s Meta connection — you usually do not need to provide this)' },
-          status: { type: 'string', description: 'Optional filter: only return campaigns with this status (e.g. ACTIVE, PAUSED)' },
-          limit: { type: 'number', description: 'Maximum number of campaigns to return (default: 25)' },
-        },
-        required: ['account_id'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'create_campaign',
-      description:
-        'Create a new campaign directly on the connected Meta Ads account. The campaign is created in ' +
-        'PAUSED status by default so it does not start spending until explicitly activated. ' +
-        'Required: name (campaign name), objective (Meta objective). ' +
-        'Optional: status (default: PAUSED — set to ACTIVE to start immediately), daily_budget (INR), ' +
-        'lifetime_budget (INR). Only one of daily_budget or lifetime_budget should be set. ' +
-        '⚠️ This is a SPEND-AFFECTING action. It requires user approval unless auto-optimize is enabled. ' +
-        'Returns the new Meta campaign ID and a confirmation message.',
-      parameters: {
-        type: 'object',
-        properties: {
-          account_id: { type: 'string', description: 'Ad account ID (auto-filled from Meta connection)' },
-          name: { type: 'string', description: 'Campaign name (visible in Meta Ads Manager)' },
-          objective: { type: 'string', description: 'Meta Ads objective: OUTCOME_SALES, OUTCOME_AWARENESS, OUTCOME_TRAFFIC, OUTCOME_ENGAGEMENT, OUTCOME_LEAD_GENERATION, OUTCOME_APP_PROMOTION' },
-          status: { type: 'string', description: 'Initial status: PAUSED (default, safe) or ACTIVE (starts spending immediately)' },
-          daily_budget: { type: 'number', description: 'Daily budget in INR. Cannot be combined with lifetime_budget.' },
-          lifetime_budget: { type: 'number', description: 'Lifetime budget in INR. Cannot be combined with daily_budget.' },
-        },
-        required: ['account_id', 'name', 'objective'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'pause_campaign',
-      description:
-        'Pause a live Meta Ads campaign. The campaign stops serving ads immediately but remains in the ' +
-        'account and can be resumed later. ' +
-        '⚠️ This is a SPEND-AFFECTING action. It requires user approval unless auto-optimize is enabled. ' +
-        'Returns a confirmation message.',
-      parameters: {
-        type: 'object',
-        properties: {
-          campaign_id: { type: 'string', description: 'The Meta campaign ID to pause (not the local database ID)' },
-        },
-        required: ['campaign_id'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'resume_campaign',
-      description:
-        'Resume a paused Meta Ads campaign. The campaign starts serving ads and spending budget again. ' +
-        '⚠️ This is a SPEND-AFFECTING action. It requires user approval unless auto-optimize is enabled. ' +
-        'Returns a confirmation message.',
-      parameters: {
-        type: 'object',
-        properties: {
-          campaign_id: { type: 'string', description: 'The Meta campaign ID to resume (not the local database ID)' },
-        },
-        required: ['campaign_id'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'get_insights',
-      description:
-        'Retrieve performance insights for a specific campaign, ad set, or ad from Meta. ' +
-        'Returns detailed metrics including: campaignId, impressions, clicks, spend (INR), reach, ' +
-        'frequency, CTR, CPC, CPM, conversions, costPerConversion, dateStart, and dateStop. ' +
-        'Required: object_id (the Meta object ID to query) and level (campaign / adset / ad). ' +
-        'Optional: date_preset (e.g. last_7d, last_30d, maximum) and fields (array of specific fields). ' +
-        'Use this for detailed performance analysis of individual campaigns or ads.',
-      parameters: {
-        type: 'object',
-        properties: {
-          object_id: { type: 'string', description: 'The Meta object ID to get insights for. Use the ad account ID (act_XXXXXXXXX) for account-level insights, or a specific campaign/ad set/ad ID.' },
-          level: { type: 'string', enum: ['campaign', 'adset', 'ad'], description: 'The level of insights to retrieve: campaign, adset, or ad' },
-          date_preset: { type: 'string', description: 'Date range preset: last_7d, last_14d, last_30d, last_90d, maximum. Default: last_30d.' },
-          fields: { type: 'array', items: { type: 'string' }, description: 'Specific fields to retrieve. If omitted, all standard fields are returned.' },
-        },
-        required: ['object_id', 'level'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'compare_performance',
-      description:
-        'Compare performance metrics across multiple Meta Ads campaigns, ad sets, or ads side by side. ' +
-        'Returns aggregated metrics per object: impressions, clicks, spend, conversions, CTR, CPC, and CPA. ' +
-        'Required: object_ids (array of Meta object IDs to compare) and level (campaign / adset / ad). ' +
-        'Optional: date_preset (default: last_30d) and metrics (array of specific metric names). ' +
-        'Use this to identify which campaigns are winners vs losers, or to compare different strategies.',
-      parameters: {
-        type: 'object',
-        properties: {
-          object_ids: { type: 'array', items: { type: 'string' }, description: 'Array of Meta object IDs (campaign, ad set, or ad) to compare' },
-          level: { type: 'string', enum: ['campaign', 'adset', 'ad'], description: 'The level of the objects being compared' },
-          date_preset: { type: 'string', description: 'Date range preset (default: last_30d)' },
-          metrics: { type: 'array', items: { type: 'string' }, description: 'Specific metrics to compare (default: all standard metrics)' },
-        },
-        required: ['object_ids', 'level'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'list_creatives',
-      description:
-        'List all ad creatives currently on the connected Meta Ads account. ' +
-        'Returns each creative\'s: id, name, status, body (ad copy text), title, imageUrl, thumbnailUrl, ' +
-        'callToAction, and link. ' +
-        'Requires a valid Meta connection. ' +
-        'Use this to review existing live creatives or find creative IDs for other operations.',
-      parameters: {
-        type: 'object',
-        properties: {
-          account_id: { type: 'string', description: 'Ad account ID (auto-filled from Meta connection)' },
-          limit: { type: 'number', description: 'Maximum number of creatives to return (default: 25)' },
-        },
-        required: ['account_id'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'create_ad_creative',
-      description:
-        'Create a new ad creative directly on the connected Meta Ads account. ' +
-        'Required: name (creative name for management), title (ad headline), body (ad copy text). ' +
-        'Optional: image_url (URL of the creative image), call_to_action (CTA type), link_url (destination URL). ' +
-        '⚠️ This is a SPEND-AFFECTING action. It requires user approval unless auto-optimize is enabled. ' +
-        'Returns the new Meta creative ID and a confirmation message.',
-      parameters: {
-        type: 'object',
-        properties: {
-          account_id: { type: 'string', description: 'Ad account ID (auto-filled from Meta connection)' },
-          name: { type: 'string', description: 'Creative name for management purposes (visible in Meta Ads Manager)' },
-          title: { type: 'string', description: 'Ad headline text shown to users' },
-          body: { type: 'string', description: 'Ad copy body text shown to users' },
-          image_url: { type: 'string', description: 'URL of the creative image. Use generate_ad_image first to get an image URL, then pass it here.' },
-          call_to_action: { type: 'string', description: 'Meta Ads CTA type (e.g. LEARN_MORE, SHOP_NOW, SIGN_UP, DOWNLOAD)' },
-          link_url: { type: 'string', description: 'Destination URL when the user clicks the ad (default: https://facebook.com)' },
-        },
-        required: ['account_id', 'name', 'title', 'body'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'preview_ad',
-      description:
-        'Preview an ad creative as it would appear on Facebook or Instagram before it goes live. ' +
-        'Returns a preview of the ad in the specified format. ' +
-        'Required: account_id (auto-filled). ' +
-        'Optional: creative_id (the Meta creative ID to preview) and ad_format (e.g. DESKTOP_FEED, ' +
-        'INSTAGRAM_STORY, MOBILE_FEED, INSTANT_ARTICLE, MARKETPLACE). ' +
-        'Use this to visually verify how a creative looks before publishing.',
-      parameters: {
-        type: 'object',
-        properties: {
-          account_id: { type: 'string', description: 'Ad account ID (auto-filled from Meta connection)' },
-          creative_id: { type: 'string', description: 'The Meta creative ID to preview' },
-          ad_format: { type: 'string', description: 'Preview format: DESKTOP_FEED, MOBILE_FEED, INSTAGRAM_STORY, INSTANT_ARTICLE, MARKETPLACE, MESSENGER_MOBILE_INBOX_MEDIA' },
-        },
-        required: ['account_id'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'list_audiences',
-      description:
-        'List all custom and lookalike audiences available on the connected Meta Ads account. ' +
-        'Returns each audience\'s: id, name, type, size, and status. ' +
-        'Requires a valid Meta connection. ' +
-        'Use this to see available targeting options before creating ad sets or campaigns.',
-      parameters: {
-        type: 'object',
-        properties: {
-          account_id: { type: 'string', description: 'Ad account ID (auto-filled from Meta connection)' },
-          type: { type: 'string', description: 'Filter by audience type: custom, lookalike, or all (default)' },
-          limit: { type: 'number', description: 'Maximum results (default: 25)' },
-        },
-        required: ['account_id'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'create_custom_audience',
-      description:
-        'Create a new custom audience on the Meta Ads account. Custom audiences let you target users based ' +
-        'on your own data (customer lists, website visitors, app users, etc.). ' +
-        'Required: name (audience name). Optional: description. ' +
-        '⚠️ This is a SPEND-AFFECTING action (affects targeting). Requires approval unless auto-optimize is enabled. ' +
-        'Returns the new audience ID.',
-      parameters: {
-        type: 'object',
-        properties: {
-          account_id: { type: 'string', description: 'Ad account ID (auto-filled from Meta connection)' },
-          name: { type: 'string', description: 'Name for the custom audience (e.g. "Past Ebook Buyers")' },
-          description: { type: 'string', description: 'Optional description of the audience source' },
-        },
-        required: ['account_id', 'name'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'create_lookalike_audience',
-      description:
-        'Create a lookalike audience from a source custom audience. Lookalike audiences find new people ' +
-        'similar to your existing customers, expanding your reach to high-intent prospects. ' +
-        'Required: name, source_audience_id (the ID of the source custom audience to base the lookalike on). ' +
-        '⚠️ This is a SPEND-AFFECTING action. Requires approval unless auto-optimize is enabled. ' +
-        'Returns the new lookalike audience ID.',
-      parameters: {
-        type: 'object',
-        properties: {
-          account_id: { type: 'string', description: 'Ad account ID (auto-filled from Meta connection)' },
-          name: { type: 'string', description: 'Name for the lookalike audience' },
-          source_audience_id: { type: 'string', description: 'ID of the source custom audience to create the lookalike from' },
-        },
-        required: ['account_id', 'name', 'source_audience_id'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'estimate_audience_size',
-      description:
-        'Estimate the potential reach/size of a target audience on Meta. Returns the estimated audience size ' +
-        'and potential daily reach. ' +
-        'Use this before creating a campaign to gauge how many people you can reach with your targeting.',
-      parameters: {
-        type: 'object',
-        properties: {
-          account_id: { type: 'string', description: 'Ad account ID (auto-filled from Meta connection)' },
-        },
-        required: ['account_id'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'validate_token',
-      description:
-        'Validate the current Meta access token. Returns whether the token is valid, the associated user ID, ' +
-        'and how many seconds until it expires. ' +
-        'Use this when Meta operations are failing (likely an expired token) or when the user asks about ' +
-        'their connection status.',
-      parameters: { type: 'object', properties: {}, required: [] },
-    },
-  },
-]
+// MCP_TOOLS is gone. It reached Meta through an MCP subprocess that cannot
+// run on serverless, and it had no ad set or ad tools — so nothing it
+// published could ever deliver. DELIVERY_TOOLS replaces it with direct
+// Graph API calls covering the full Campaign -> Ad Set -> Ad hierarchy.
+export { DELIVERY_TOOLS } from './tool-definitions.delivery'
 
 /**
  * MASTERMIND_TOOLS — the advanced AI Manager tools that give the agent
@@ -1150,4 +861,23 @@ export const MASTERMIND_TOOLS: ToolDefinition[] = [
   },
 ]
 
-export const ALL_TOOLS = [...LOCAL_TOOLS, ...MASTERMIND_TOOLS, ...MCP_TOOLS]
+/**
+ * The tool list handed to the model.
+ *
+ * De-duplicated by name: a few tools (get_account_balance, test_meta_connection)
+ * are defined in more than one group, and OpenAI rejects a tools array
+ * containing two functions with the same name. First definition wins.
+ */
+export const ALL_TOOLS: ToolDefinition[] = (() => {
+  const seen = new Set<string>()
+  const out: ToolDefinition[] = []
+  for (const tool of [...LOCAL_TOOLS, ...MASTERMIND_TOOLS, ...DELIVERY_TOOLS]) {
+    if (seen.has(tool.function.name)) continue
+    seen.add(tool.function.name)
+    out.push(tool)
+  }
+  return out
+})()
+
+/** Every tool name the dispatcher can be asked for. Used by tests. */
+export const ALL_TOOL_NAMES = ALL_TOOLS.map((t) => t.function.name)

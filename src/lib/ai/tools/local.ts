@@ -1,11 +1,12 @@
 import { db } from '@/lib/db/supabase-db'
-import { getSupabaseServer } from '@/lib/supabase/server'
+import { getScopedSupabase } from '@/lib/db/supabase-db'
 import type { AIProvider, AIProviderType } from '@/lib/ai/types'
 import { generateAdImage, saveImageToStorage } from '@/lib/ai/image-generator'
 import { retrieveRelevant, trackGeneratedImage } from '@/lib/ai/rag'
 import { getStrategy, updateStrategy, buildStrategyContext } from '@/lib/ai/strategy'
 import { getRecentMemory, addMemory } from '@/lib/ai/memory'
-import { syncCampaignInsights, syncFromMeta, publishCampaignToMeta, setCampaignStatus, getAccountSummary } from '@/lib/meta/sync'
+import { syncCampaignInsights, syncFromMeta, setCampaignStatus, getAccountSummary } from '@/lib/meta/sync'
+import { publishFullCampaign } from '@/lib/meta/publish'
 import { generateChart } from '@/lib/ai/chart'
 import { transcribeAudio, speak } from '@/lib/ai/voice'
 import type { MemoryKind } from '@/lib/ai/memory'
@@ -144,10 +145,20 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
           budgetType: (args.budgetType as string) || 'daily',
           startDate: args.startDate ? new Date(args.startDate as string) : null,
           endDate: args.endDate ? new Date(args.endDate as string) : null,
+          linkUrl: (args.linkUrl as string) || null,
           status: 'draft',
         },
       }) as any
-      return { success: true, campaignId: campaign?.id, message: `Campaign "${campaign?.name}" created as a draft` }
+      return {
+        success: true,
+        campaignId: campaign?.id,
+        message: `Campaign "${campaign?.name}" created as a draft`,
+        // A draft cannot be published without a destination, so ask for it now
+        // rather than failing at publish time.
+        nextStep: args.linkUrl
+          ? 'Add creatives, then call publish_full_campaign to build the campaign, ad set and ads on Meta.'
+          : 'A landing page URL is still required before this can be published. Ask the client for it.',
+      }
     }
     case 'update_local_campaign': {
       const data: Record<string, unknown> = {}
@@ -155,6 +166,7 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
       if (args.status) data.status = args.status
       if (args.budget !== undefined) data.budget = num(args.budget)
       if (args.budgetType) data.budgetType = args.budgetType
+      if (args.linkUrl !== undefined) data.linkUrl = args.linkUrl
       const campaign = await db.campaign.update({ where: { id: args.campaignId as string, userId }, data }) as any
       if (!campaign) return { error: 'Campaign not found' }
       return { success: true, campaignId: campaign.id, message: 'Campaign updated' }
@@ -239,7 +251,7 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
       let savedUrl = result.imageUrl
       let storagePath: string | null = null
       try {
-        const supabase = await getSupabaseServer()
+        const supabase = await getScopedSupabase()
         const saved = await saveImageToStorage(result.imageUrl, userId, supabase as never)
         if (saved) { savedUrl = saved.url; storagePath = saved.path }
       } catch {}
@@ -293,7 +305,7 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
       if (imgResult.success && imgResult.imageUrl) {
         imageUrl = imgResult.imageUrl
         try {
-          const supabase = await getSupabaseServer()
+          const supabase = await getScopedSupabase()
           const saved = await saveImageToStorage(imgResult.imageUrl, userId, supabase as never)
           if (saved) imageUrl = saved.url
         } catch {}
@@ -436,8 +448,23 @@ Return JSON: { title, primaryText (Marathi/Devanagari), headline (Marathi/Devana
     case 'sync_from_meta': {
       return await syncFromMeta(userId)
     }
-    case 'publish_campaign_to_meta': {
-      return await publishCampaignToMeta(userId, args.campaignId as string)
+    case 'publish_campaign_to_meta':
+    case 'publish_full_campaign': {
+      // Both names route through the full Campaign -> Ad Set -> Ad pipeline.
+      // Publishing only a campaign object (the old behaviour) produces
+      // something that can never deliver an impression.
+      return await publishFullCampaign({
+        userId,
+        campaignId: (args.campaignId || args.campaign_id) as string,
+        creativeIds: (args.creativeIds || args.creative_ids) as string[] | undefined,
+        linkUrl: (args.linkUrl || args.link_url) as string | undefined,
+        pageId: (args.pageId || args.page_id) as string | undefined,
+        pixelId: (args.pixelId || args.pixel_id) as string | undefined,
+        conversionEvent: (args.conversionEvent || args.conversion_event) as string | undefined,
+        optimizationGoal: (args.optimizationGoal || args.optimization_goal) as never,
+        activate: Boolean(args.activate),
+        targeting: args.targeting as never,
+      })
     }
     case 'set_campaign_status': {
       return await setCampaignStatus(userId, args.campaignId as string, Boolean(args.active))
@@ -447,7 +474,7 @@ Return JSON: { title, primaryText (Marathi/Devanagari), headline (Marathi/Devana
     case 'get_daily_metrics': {
       const days = (args.days as number) || 30
       const since = new Date(); since.setDate(since.getDate() - days)
-      const supabase = await getSupabaseServer()
+      const supabase = await getScopedSupabase()
       const { data } = await supabase
         .from('daily_metrics')
         .select('date, spend, impressions, clicks, conversions, reach, ctr, cpc, revenue')

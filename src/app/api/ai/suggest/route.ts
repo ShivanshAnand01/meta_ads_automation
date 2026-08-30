@@ -6,9 +6,19 @@ import { resolveSecrets, SECRET_KEYS } from '@/lib/secrets'
 import type { AIProviderType } from '@/lib/ai/types'
 import type { AdCreativeData } from '@/lib/meta/types'
 
+// Vercel kills a function at its maxDuration. Without this the default
+// (10s Hobby / 15s Pro) truncates long AI work mid-stream.
+import { enforceRateLimit } from '@/lib/rate-limit'
+
+export const maxDuration = 60
+
+
 export async function POST(request: Request) {
   try {
     const userId = await requireUserId()
+
+    const limited = await enforceRateLimit(userId, 'aiGenerate', 'AI suggestions')
+    if (limited) return limited
     const body = await request.json()
 
     const { creativeId } = body as { creativeId: string }

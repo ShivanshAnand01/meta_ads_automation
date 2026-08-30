@@ -11,11 +11,20 @@ import type { AIProviderType } from '@/lib/ai/types'
 export async function GET() {
   try {
     const userId = await requireUserId()
-    const pending = await db.pendingApproval.findMany({
+    const pending = (await db.pendingApproval.findMany({
       where: { userId, status: 'pending' },
       orderBy: { createdAt: 'desc' },
-    }) as any[]
-    return Response.json({ approvals: pending, total: pending.length })
+    })) as any[]
+
+    const now = Date.now()
+    const live = pending.filter((a) => !a.expiresAt || new Date(a.expiresAt).getTime() > now)
+    const expired = pending.filter((a) => a.expiresAt && new Date(a.expiresAt).getTime() <= now)
+
+    return Response.json({
+      approvals: live,
+      total: live.length,
+      expiredCount: expired.length,
+    })
   } catch (error) {
     return handleError(error, 'Failed to load approvals')
   }
@@ -35,6 +44,25 @@ export async function POST(request: Request) {
     }
     if (approval.status !== 'pending') {
       return Response.json({ error: `Approval already ${approval.status}` }, { status: 409 })
+    }
+
+    // An approval queued days ago was reasoned about against a state of the
+    // account that no longer exists. Executing it blindly is how an agent
+    // pauses a campaign that is now the client's best performer.
+    const expiresAt = approval.expiresAt ? new Date(approval.expiresAt) : null
+    if (decision === 'approve' && expiresAt && expiresAt.getTime() < Date.now()) {
+      await db.pendingApproval.update({
+        where: { id: approvalId },
+        data: { status: 'expired', decidedBy: userId, decidedAt: new Date() },
+      })
+      return Response.json(
+        {
+          error:
+            'This approval has expired. The account may have changed since it was proposed — ask the AI Manager to re-evaluate and propose it again.',
+          status: 'expired',
+        },
+        { status: 410 },
+      )
     }
 
     if (decision === 'reject') {

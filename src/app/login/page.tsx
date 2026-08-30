@@ -14,6 +14,16 @@ import { Brain, Loader2, Mail, Lock, ArrowLeft } from 'lucide-react'
 
 type AuthMode = 'signin' | 'signup' | 'reset'
 
+/**
+ * Self-serve signup is OFF unless explicitly enabled.
+ *
+ * This is a single-client ad-management tool wired to a live ad account.
+ * Leaving public signup open let anyone on the internet create an account on
+ * it. Set NEXT_PUBLIC_ALLOW_SIGNUP=true only if you actually want open
+ * registration; otherwise provision accounts from the Supabase dashboard.
+ */
+const ALLOW_SIGNUP = process.env.NEXT_PUBLIC_ALLOW_SIGNUP === 'true'
+
 function safeNext(v: string | null): string {
   if (!v) return '/'
   try {
@@ -65,6 +75,11 @@ export default function LoginPage() {
     const supabase = createClient()
     try {
       if (mode === 'signup') {
+        if (!ALLOW_SIGNUP) {
+          toast.error('Sign-ups are closed on this account. Contact your administrator for access.')
+          setMode('signin')
+          return
+        }
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
@@ -254,16 +269,18 @@ export default function LoginPage() {
                     Forgot password?
                   </button>
                 </div>
-                <div>
-                  No account?{' '}
-                  <button
-                    type="button"
-                    onClick={() => setMode('signup')}
-                    className="text-primary font-medium hover:underline"
-                  >
-                    Sign up
-                  </button>
-                </div>
+                {ALLOW_SIGNUP && (
+                  <div>
+                    No account?{' '}
+                    <button
+                      type="button"
+                      onClick={() => setMode('signup')}
+                      className="text-primary font-medium hover:underline"
+                    >
+                      Sign up
+                    </button>
+                  </div>
+                )}
               </>
             )}
             {mode === 'signup' && (

@@ -1,4 +1,5 @@
 import type { AIProvider, CreativeReview } from './types'
+import { generateStructured, creativeReviewSchema } from './structured'
 import type { AdCreativeData } from '@/lib/meta/types'
 
 const REVIEW_SYSTEM_PROMPT = `You are an expert Meta Ads reviewer and strategist specializing in the Indian/Maharashtrian market. You evaluate ad creatives based on cultural relevance, emotional appeal, clarity, call-to-action effectiveness, and potential ROAS for the Marathi-speaking audience.
@@ -50,8 +51,7 @@ Respond with this JSON format:
   "recommendedChanges": ["change1", "change2", ...]
 }`
 
-  const response = await provider.generateCompletion(prompt, REVIEW_SYSTEM_PROMPT)
-  return parseJsonResponse<CreativeReview>(response)
+  return generateStructured(provider, creativeReviewSchema, prompt, REVIEW_SYSTEM_PROMPT)
 }
 
 export async function generatePerformanceReport(
@@ -67,11 +67,17 @@ export async function generatePerformanceReport(
     )
     .join('\n')
 
+  // Portfolio ROAS is total revenue / total spend. Averaging per-creative
+  // ROAS weights a ₹100 creative the same as a ₹100,000 one and produces a
+  // number that is simply wrong.
+  const totalRevenue = creatives.reduce((sum, c) => sum + (c.actualSpend || 0) * (c.actualRoas || 0), 0)
+  const overallRoas = totalSpend > 0 ? totalRevenue / totalSpend : 0
+
   const prompt = `Analyze the following Meta Ads campaign performance for a Marathi ebook marketing campaign targeting Maharashtra:
 
 Total Spend: ₹${totalSpend}
 Total Conversions: ${totalConversions}
-${creatives.some((c) => c.actualRoas != null) ? `Overall ROAS: ${(creatives.reduce((sum, c) => sum + (c.actualRoas || 0), 0) / (creatives.length || 1)).toFixed(2)}x (average)` : 'Overall ROAS: N/A (no revenue tracked)'}
+${totalRevenue > 0 ? `Overall ROAS: ${overallRoas.toFixed(2)}x (total revenue ₹${totalRevenue.toFixed(0)} / total spend)` : 'Overall ROAS: N/A (no revenue tracked)'}
 
 Individual Creative Performance:
 ${creativesSummary}
@@ -87,17 +93,3 @@ Write the report in a mix of English and Marathi where appropriate.`
   return provider.generateCompletion(prompt, REVIEW_SYSTEM_PROMPT)
 }
 
-function parseJsonResponse<T>(response: string): T {
-  let cleaned = response.trim()
-  if (cleaned.startsWith('```json')) {
-    cleaned = cleaned.slice(7)
-  }
-  if (cleaned.startsWith('```')) {
-    cleaned = cleaned.slice(3)
-  }
-  if (cleaned.endsWith('```')) {
-    cleaned = cleaned.slice(0, -3)
-  }
-  cleaned = cleaned.trim()
-  return JSON.parse(cleaned) as T
-}

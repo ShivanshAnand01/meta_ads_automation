@@ -11,11 +11,11 @@ export function createAIProvider(
   switch (type) {
     case 'anthropic':
       if (!config.apiKey) throw new Error('Anthropic API key is required')
-      return new AnthropicProvider(config.apiKey, config.model || 'claude-3-5-sonnet-20241022')
+      return new AnthropicProvider(config.apiKey, config.model || 'claude-sonnet-5')
 
     case 'openai':
       if (!config.apiKey) throw new Error('OpenAI API key is required')
-      return new OpenAIProvider(config.apiKey, config.model || 'gpt-4o-mini')
+      return new OpenAIProvider(config.apiKey, config.model || 'gpt-4.1-mini')
 
     case 'groq':
       if (!config.apiKey) throw new Error('Groq API key is required')
@@ -36,16 +36,16 @@ export function getAvailableModels(type: AIProviderType): { value: string; label
   switch (type) {
     case 'anthropic':
       return [
-        { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet (Recommended)' },
-        { value: 'claude-3-opus-20240229', label: 'Claude 3 Opus (Most Powerful)' },
-        { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku (Fast)' },
+        { value: 'claude-sonnet-5', label: 'Claude Sonnet 5 (Recommended)' },
+        { value: 'claude-opus-5', label: 'Claude Opus 5 (Most Capable)' },
+        { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5 (Fast & Cheap)' },
       ]
 
     case 'openai':
       return [
-        { value: 'gpt-4o', label: 'GPT-4o (Most Powerful)' },
-        { value: 'gpt-4o-mini', label: 'GPT-4o Mini (Recommended)' },
-        { value: 'o1-mini', label: 'o1 Mini (Reasoning)' },
+        { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini (Recommended)' },
+        { value: 'gpt-4.1', label: 'GPT-4.1 (Most Capable)' },
+        { value: 'gpt-4o', label: 'GPT-4o' },
       ]
 
     case 'groq':

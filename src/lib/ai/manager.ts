@@ -15,6 +15,32 @@ import { syncCampaignInsights, syncFromMeta } from '@/lib/meta/sync'
 import { runReflection } from '@/lib/ai/reflection'
 import { retrieveRelevant } from '@/lib/ai/rag'
 import { logAction } from '@/lib/ai/audit'
+import { generateStructured, creativeSuggestionSchema, enforceCopyLimits } from '@/lib/ai/structured'
+import { checkBudget, buildPacingContext } from '@/lib/ai/budget-guard'
+
+/**
+ * How many past messages to keep in the model's context. Tool results are
+ * verbose, so this is deliberately modest — durable facts belong in memory
+ * (get_memory / search_memory), not in an ever-growing transcript.
+ */
+const MAX_HISTORY_MESSAGES = 40
+
+/**
+ * Keep the most recent messages while preserving assistant/tool pairing: an
+ * assistant message with tool_calls must keep its tool replies, or providers
+ * reject the request.
+ */
+function windowMessages(
+  messages: Array<Record<string, unknown>>,
+  limit: number,
+): { messages: Array<Record<string, unknown>>; droppedCount: number } {
+  if (messages.length <= limit) return { messages, droppedCount: 0 }
+
+  let start = messages.length - limit
+  // Never begin the window on an orphaned tool reply.
+  while (start < messages.length && messages[start].role === 'tool') start++
+  return { messages: messages.slice(start), droppedCount: start }
+}
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -43,6 +69,7 @@ export interface CreativeResult {
   imageError: string | null
   success: boolean
   message: string
+  warnings?: string[]
 }
 
 export interface FullAutonomyResult {
@@ -247,10 +274,21 @@ export class AIManager {
     const localCampaigns = await db.campaign.findMany({ where: { userId: this.userId } }) as unknown[]
     const localCreatives = await db.adCreative.findMany({ where: { userId: this.userId } }) as unknown[]
 
+    // Real pacing numbers, so the agent reasons about spend against the caps
+    // that will actually be enforced rather than guessing.
+    let pacingContext = ''
+    try {
+      const decision = await checkBudget(this.userId, 'create_campaign', {})
+      pacingContext = buildPacingContext(decision)
+    } catch {
+      /* pacing is advisory here; the hard check still runs at execution time */
+    }
+
     const contextString = [
       `CONTEXT: ${metaStatus} The user has ${localCampaigns.length} local campaign(s) and ${localCreatives.length} local creative(s).`,
       'Call sync_campaign_insights before analyzing performance so you work with real Meta data.',
       strategyContext,
+      pacingContext,
       memoryContext,
       ragContext,
     ].filter(Boolean).join('\n\n')
@@ -314,7 +352,7 @@ export class AIManager {
     this.localCtx!.conversationId = conversationId
 
     // Build context
-    const { contextString } = await this.buildContext(message)
+    const { contextString: baseContext } = await this.buildContext(message)
 
     // Persist the user message
     let userMessageContent = message
@@ -328,11 +366,18 @@ export class AIManager {
       data: { conversationId, role: 'user', content: userMessageContent },
     })
 
-    // Load full history
-    const dbMessages = await db.aiMessage.findMany({
+    // Load history, capped.
+    //
+    // This used to load EVERY message in the conversation with no limit, so
+    // cost and latency grew linearly forever until the model 400'd on context
+    // length. We keep a rolling window of the most recent turns and prepend a
+    // short summary line so older context is not silently lost.
+    const allMessages = await db.aiMessage.findMany({
       where: { conversationId },
       orderBy: { createdAt: 'asc' },
     }) as Array<Record<string, unknown>>
+
+    const { messages: dbMessages, droppedCount } = windowMessages(allMessages, MAX_HISTORY_MESSAGES)
 
     const chatMessages: ChatMessage[] = dbMessages.map((m, i) => {
       const role = m.role as 'user' | 'assistant' | 'tool'
@@ -360,6 +405,12 @@ export class AIManager {
       }
       return { role: 'user', content }
     })
+
+    const contextString = droppedCount > 0
+      ? `${baseContext}
+
+NOTE: this conversation is long, so the ${droppedCount} oldest message(s) are not in context. Rely on get_memory and search_memory for earlier decisions rather than assuming you can see them.`
+      : baseContext
 
     // Stream or process
     let result: AgentResult
@@ -469,12 +520,31 @@ export class AIManager {
       callToAction: cta,
     }
 
+    const copyWarnings: string[] = []
     try {
-      const prov = this.provider as { generateCompletion: (p: string, s?: string) => Promise<string> }
-      const copyPrompt = `Generate a Meta Ads creative for: "${product}". Angle: ${angle}. Target audience: Maharashtra, India (Marathi-speaking). Respond ONLY with valid JSON: {"title":"(English management name)","description":"(English, one sentence strategy)","primaryText":"(Marathi Devanagari ad copy, 2-3 lines)","headline":"(Marathi Devanagari headline)","callToAction":"${cta}"}.`
-      const text = await prov.generateCompletion(copyPrompt, 'You are an expert Marathi ad copywriter for the Maharashtrian market. Respond only with valid JSON, no markdown.')
-      copy = { ...copy, ...JSON.parse(text) }
-    } catch {}
+      const copyPrompt = `Generate a Meta Ads creative for: "${product}". Angle: ${angle}. Target audience: Maharashtra, India (Marathi-speaking). Respond ONLY with valid JSON: {"title":"(English management name)","description":"(English, one sentence strategy)","primaryText":"(Marathi Devanagari ad copy, max 125 characters)","headline":"(Marathi Devanagari headline, max 40 characters)","callToAction":"${cta}","targeting":"(short targeting description)","expectedRoas":0,"reasoning":"(why this works)"}.`
+      const validated = await generateStructured(
+        this.provider!,
+        creativeSuggestionSchema,
+        copyPrompt,
+        'You are an expert Marathi ad copywriter for the Maharashtrian market. Respond only with valid JSON, no markdown.',
+      )
+      const limited = enforceCopyLimits(validated)
+      copyWarnings.push(...limited.copyWarnings)
+      copy = {
+        title: limited.title,
+        description: limited.description,
+        primaryText: limited.primaryText,
+        headline: limited.headline,
+        callToAction: limited.callToAction,
+      }
+    } catch (err) {
+      // Previously this was `catch {}`, which persisted a creative with empty
+      // ad copy and reported success. Surface it instead.
+      copyWarnings.push(
+        `Ad copy generation failed: ${err instanceof Error ? err.message : 'unknown error'}. Placeholder text was used.`,
+      )
+    }
 
     // 2. Generate the ad image via the enhanced image generator
     const finalImagePrompt = imagePrompt || `${product}, ${angle} marketing theme, professional digital ad creative, Marathi Indian audience, high quality, clean modern design, vibrant colors`
@@ -512,8 +582,11 @@ export class AIManager {
       imageUrl,
       imageProvider: imgResult.provider,
       imageError: imageUrl ? null : (imgResult.error || 'Image generation failed — creative saved with text only.'),
-      success: true,
-      message: `Creative "${creative?.title}" created${imageUrl ? ` with image (${imgResult.provider})` : ' (image generation failed — text only)'}. Ready for review.`,
+      success: copyWarnings.length === 0,
+      warnings: copyWarnings,
+      message:
+        `Creative "${creative?.title}" created${imageUrl ? ` with image (${imgResult.provider})` : ' (image generation failed — text only)'}. Ready for review.` +
+        (copyWarnings.length ? ` Issues: ${copyWarnings.join(' ')}` : ''),
     }
   }
 
