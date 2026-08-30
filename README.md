@@ -147,3 +147,20 @@ vector columns are healthy.
 - **Health endpoint:** `/api/status` checks env vars, Supabase connectivity, and whether pgvector/vector columns are present.
 - **Agent instructions:** See `AGENTS.md` and `CLAUDE.md` for coding conventions and the AI system prompt.
 - **Region:** `vercel.json` targets `bom1` (Mumbai) by default for low latency in Maharashtra. Change it in the Vercel dashboard if you need a different region.
+
+## Scheduler cadence (Vercel plan limit)
+
+`vercel.json` runs `/api/cron/run-jobs` at `30 0 * * *` — 00:30 UTC, which is
+06:00 IST, so the morning optimization lands before the client's day starts.
+
+**This is once per day because the project is on the Vercel Hobby plan**, which
+rejects any cron expression that fires more than daily — the deploy fails
+outright rather than silently degrading.
+
+Budget pacing and anomaly detection are much more useful hourly. On Pro, change
+the schedule to `*/15 * * * *` (or `0 * * * *`) and redeploy; nothing else needs
+to change. Until then, the client's spend is only re-checked once a day, so keep
+the daily cap conservative.
+
+The endpoint also accepts a manual trigger with the `x-runner-secret` header, so
+a routine can be run on demand without waiting for the schedule.

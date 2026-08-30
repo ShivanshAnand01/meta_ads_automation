@@ -8,7 +8,7 @@
   "crons": [
     {
       "path": "/api/cron/run-jobs",
-      "schedule": "*/15 * * * *"
+      "schedule": "30 0 * * *"
     }
   ],
   "github": {
