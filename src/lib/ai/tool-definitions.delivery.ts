@@ -182,11 +182,11 @@ export const DELIVERY_TOOLS: ToolDefinition[] = [
       description:
         'Resolve a place, language or interest name into the Meta targeting ID needed by create_ad_set. ' +
         'ALWAYS use this before building a targeting spec — these IDs are not constants and must never be guessed. ' +
-        'Example: search_targeting({query: "Maharashtra", kind: "geo"}) or {query: "Marathi", kind: "locale"}.',
+        'Example: search_targeting({query: "Karnataka", kind: "geo"}) or {query: "Tamil", kind: "locale"}.',
       parameters: {
         type: 'object',
         properties: {
-          query: { type: 'string', description: 'Name to look up, e.g. "Maharashtra", "Pune", "Marathi", "Online shopping"' },
+          query: { type: 'string', description: 'Name to look up, e.g. "Gujarat", "Chennai", "Hindi", "Online shopping"' },
           kind: { type: 'string', description: 'geo | locale | interest' },
         },
         required: ['query', 'kind'],
@@ -491,7 +491,7 @@ export const DELIVERY_TOOLS: ToolDefinition[] = [
             type: 'object',
             description:
               'Plain-language targeting, resolved to Meta IDs automatically: ' +
-              '{"regions":["Maharashtra"],"cities":["Pune"],"languages":["Marathi"],"ageMin":22,"ageMax":55,"interests":["Online shopping"]}',
+              '{"regions":["<from profile>"],"cities":["<from profile>"],"languages":["<from profile>"],"ageMin":22,"ageMax":55,"interests":["Online shopping"]}',
           },
         },
         required: ['campaignId'],

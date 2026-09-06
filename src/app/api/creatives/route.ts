@@ -1,4 +1,5 @@
 import { db } from '@/lib/db/supabase-db'
+import { getProfile } from '@/lib/ai/profile'
 import { requireUserId, handleError } from '@/lib/supabase/server'
 
 async function validateCampaignOwnership(campaignId: unknown, userId: string): Promise<boolean> {
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
         targeting: body.targeting ?? null,
         expectedSpend: body.expectedSpend ?? null,
         expectedRoas: body.expectedRoas ?? null,
-        language: body.language ?? 'marathi',
+        language: body.language ?? (await getProfile(userId)).primaryLanguage,
         audience: body.audience ?? null,
         campaignId: body.campaignId ?? null,
         status: body.status ?? 'draft',

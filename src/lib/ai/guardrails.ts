@@ -10,6 +10,8 @@
 /** Read-only or local-draft tools that never touch live spend. */
 export const SAFE_TOOLS = new Set([
   'ask_user_question',
+  // Onboarding: reads, profile edits, crawling and connecting spend nothing
+  'get_business_profile', 'set_business_profile', 'ingest_website', 'connect_meta_account', 'select_ad_account',
   'get_local_campaigns', 'get_local_creatives', 'get_local_campaign',
   'get_dashboard_summary', 'search_knowledge_base',
   'get_strategy', 'get_memory', 'search_memory',

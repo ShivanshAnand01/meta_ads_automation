@@ -13,6 +13,12 @@ import type { MemoryKind } from '@/lib/ai/memory'
 import { searchMemory as semanticSearchMemory } from '@/lib/ai/memory'
 import { runReflection } from '@/lib/ai/reflection'
 import { createPendingQuestion, cancelPendingQuestion } from '@/lib/ai/pending-questions'
+import { getProfile, upsertProfile, buildProfileContext, missingProfileFields, type BusinessProfile } from '@/lib/ai/profile'
+import { ingestWebsite } from '@/lib/ai/website-ingest'
+import { generateStructured, creativeSuggestionSchema, enforceCopyLimits } from '@/lib/ai/structured'
+import { suggestCreativeImprovements } from '@/lib/ai/creative-generator'
+import { reviewCreative } from '@/lib/ai/creative-reviewer'
+import { connectMetaAccount, selectAdAccount } from '@/lib/meta/connect'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -47,6 +53,85 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
   const { userId } = ctx
 
   switch (tool) {
+    // --- Onboarding: profile, website, Meta connection -------------------
+    case 'get_business_profile': {
+      const profile = await getProfile(userId)
+      return { profile, missing: missingProfileFields(profile), context: buildProfileContext(profile) }
+    }
+    case 'set_business_profile': {
+      const a = args as Record<string, unknown>
+      const patch: Partial<Omit<BusinessProfile, 'userId'>> = {}
+      const str = (k: string) => (typeof a[k] === 'string' ? (a[k] as string) : undefined)
+      const arr = (k: string) => (Array.isArray(a[k]) ? (a[k] as unknown[]).map(String) : undefined)
+      if (str('business_name') !== undefined) patch.businessName = str('business_name')
+      if (str('website_url') !== undefined) patch.websiteUrl = str('website_url')
+      if (str('industry') !== undefined) patch.industry = str('industry')
+      if (str('description') !== undefined) patch.description = str('description')
+      if (str('products') !== undefined) patch.products = str('products')
+      if (str('usp') !== undefined) patch.usp = str('usp')
+      if (str('primary_language') !== undefined) patch.primaryLanguage = str('primary_language')!.toLowerCase()
+      if (arr('secondary_languages') !== undefined) patch.secondaryLanguages = arr('secondary_languages')
+      if (str('language_mode') === 'single' || str('language_mode') === 'mixed') patch.languageMode = str('language_mode') as 'single' | 'mixed'
+      if (str('market_country') !== undefined) patch.marketCountry = str('market_country')!.toUpperCase()
+      if (arr('market_regions') !== undefined) patch.marketRegions = arr('market_regions')
+      if (arr('market_cities') !== undefined) patch.marketCities = arr('market_cities')
+      if (str('currency') !== undefined) patch.currency = str('currency')!.toUpperCase()
+      if (str('target_audience') !== undefined) patch.targetAudience = str('target_audience')
+      if (str('tone') !== undefined) patch.tone = str('tone')
+      if (arr('brand_colors') !== undefined) patch.brandColors = arr('brand_colors')
+      if (str('avoid') !== undefined) patch.avoid = str('avoid')
+      if (str('default_objective') !== undefined) patch.defaultObjective = str('default_objective')
+      if (str('default_cta') !== undefined) patch.defaultCta = str('default_cta')
+      if (str('landing_url') !== undefined) patch.landingUrl = str('landing_url')
+      if (str('cultural_notes') !== undefined) patch.culturalNotes = str('cultural_notes')
+      if (typeof a.onboarding_complete === 'boolean') patch.onboardingComplete = a.onboarding_complete
+      const profile = await upsertProfile(userId, patch)
+      return { success: true, profile, missing: missingProfileFields(profile), context: buildProfileContext(profile) }
+    }
+    case 'ingest_website': {
+      const url = String(args.url || '').trim()
+      if (!url) return { error: 'url is required' }
+      const result = await ingestWebsite({
+        userId, url, provider: ctx.providerType, apiKey: ctx.apiKey, baseUrl: ctx.baseUrl, embeddingKey: ctx.embeddingKey,
+      })
+      const profile = await getProfile(userId)
+      const patch: Partial<Omit<BusinessProfile, 'userId'>> = {}
+      if (!profile.websiteUrl) patch.websiteUrl = url
+      if (!profile.businessName && result.learned.siteTitle) patch.businessName = result.learned.siteTitle.split(/[|\u2013-]/)[0].trim()
+      if (!profile.description && result.learned.description) patch.description = result.learned.description
+      if (Object.keys(patch).length) await upsertProfile(userId, patch)
+      const hint = result.learned.detectedLanguageHint
+      return {
+        ...result,
+        prefilled: Object.keys(patch),
+        nextStep: hint && hint !== 'en'
+          ? `The site appears to be in "${hint}". Confirm the ad copy language with the user, then save it with set_business_profile.`
+          : 'Confirm the ad copy language and target market with the user, then save them with set_business_profile.',
+      }
+    }
+    case 'connect_meta_account': {
+      const result = await connectMetaAccount(userId, {
+        appId: String(args.app_id || ''), appSecret: String(args.app_secret || ''),
+        accessToken: String(args.access_token || ''), adAccountId: args.ad_account_id ? String(args.ad_account_id) : undefined,
+      })
+      if (!result.success) return { error: result.error }
+      // Currency comes from the ad account; the profile should agree with it.
+      if (result.adAccountCurrency) await upsertProfile(userId, { currency: result.adAccountCurrency }).catch(() => {})
+      return {
+        success: true,
+        adAccount: result.adAccountId ? { id: result.adAccountId, name: result.adAccountName, currency: result.adAccountCurrency } : null,
+        availableAccounts: result.availableAccounts,
+        tokenExpiry: result.tokenExpiry,
+        missingScopes: result.missingScopes,
+        message: result.availableAccounts.length > 1
+          ? `Connected. The token can see ${result.availableAccounts.length} ad accounts - ask the user which one to manage, then call select_ad_account.`
+          : `Connected to ad account "${result.adAccountName}".${result.missingScopes.length ? ` WARNING: token is missing ${result.missingScopes.join(', ')} - campaign changes will fail until it is regenerated with those permissions.` : ''}`,
+      }
+    }
+    case 'select_ad_account': {
+      return await selectAdAccount(userId, String(args.ad_account_id || ''))
+    }
+
     // --- Ask user a clarifying question (popup on chat) -----------------
     case 'ask_user_question': {
       const question = (args.question as string) || 'Please provide more details.'
@@ -207,8 +292,8 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
           callToAction: (args.callToAction as string) || 'LEARN_MORE',
           expectedSpend: num(args.expectedSpend) || 1000,
           expectedRoas: num(args.expectedRoas) || 2,
-          language: (args.language as string) || 'marathi',
-          audience: (args.audience as string) || 'Maharashtra',
+          language: (args.language as string) || (await getProfile(userId)).primaryLanguage,
+          audience: (args.audience as string) || (await getProfile(userId)).marketRegions.join(', ') || null,
           imageUrl: (args.imageUrl as string) || null,
           campaignId,
           status: 'draft', reviewStatus: 'pending',
@@ -237,14 +322,15 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
 
     // --- Image generation -------------------------------------------------
     case 'generate_ad_image': {
-      const prompt = (args.prompt as string) || 'Professional ad creative for a Marathi ebook'
+      const promptProfile = await getProfile(userId)
+      const prompt = (args.prompt as string) || `Professional ad creative for ${promptProfile.businessName || promptProfile.description || 'the business'}`
       const imageApiKey = ctx.providerType === 'openai' ? ctx.apiKey : ctx.embeddingKey
       const result = await generateAdImage('openai', imageApiKey, prompt, {
         size: (args.size as string) || undefined,
         style: (args.style as string) || undefined,
         quality: (args.quality as 'standard' | 'hd') || undefined,
         aspectRatio: (args.aspectRatio as '1:1' | '4:5' | '9:16' | '1.91:1' | '16:9') || undefined,
-        brandColors: Array.isArray(args.brandColors) ? (args.brandColors as string[]) : undefined,
+        brandColors: Array.isArray(args.brandColors) ? (args.brandColors as string[]) : (promptProfile.brandColors.length ? promptProfile.brandColors : undefined),
         negativePrompt: (args.negativePrompt as string) || undefined,
       })
       if (!result.success || !result.imageUrl) return { error: result.error || 'Image generation failed' }
@@ -269,7 +355,10 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
 
     // --- Combined creative + image (one step) ----------------------------
     case 'generate_creative_with_image': {
-      const product = (args.product as string) || 'a Marathi ebook'
+      const profile = await getProfile(userId)
+      const lang = profile.primaryLanguageLabel
+      const where = [...profile.marketRegions, ...profile.marketCities, profile.marketCountry].filter(Boolean).join(', ')
+      const product = (args.product as string) || profile.products || profile.businessName || 'the product'
       const angle = (args.angle as string) || 'benefit-driven'
       const cta = (args.callToAction as string) || 'LEARN_MORE'
       const campaignId = (args.campaignId as string) || null
@@ -278,27 +367,36 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
       }
       const imagePromptArg = (args.imagePrompt as string) || ''
 
-      // Generate Marathi ad copy via the provider
+      // Ad copy in the profile's language, validated against the schema and
+      // Meta's length limits. A parse failure is reported, never swallowed.
       let copy: { title: string; description: string; primaryText: string; headline: string; callToAction: string } = {
         title: `${product} — ${angle}`, description: `${angle} angle for ${product}`, primaryText: '', headline: '', callToAction: cta,
       }
-      try {
-        const prov = ctx.provider as { generateCompletion: (p: string, s?: string) => Promise<string> }
-        const copyPrompt = `Generate a Meta Ads creative for: "${product}". Angle: ${angle}. Target audience: Maharashtra, India (Marathi-speaking). Respond ONLY with valid JSON: {"title":"(English management name)","description":"(English, one sentence strategy)","primaryText":"(Marathi Devanagari ad copy, 2-3 lines)","headline":"(Marathi Devanagari headline)","callToAction":"${cta}"}.`
-        const text = await prov.generateCompletion(copyPrompt, 'You are an expert Marathi ad copywriter for the Maharashtrian market. Respond only with valid JSON, no markdown.')
-        const parsed = JSON.parse(text)
-        copy = { ...copy, ...parsed }
-      } catch {}
+      const copyWarnings: string[] = []
+      if (!ctx.provider) {
+        copyWarnings.push('No AI provider configured — creative saved with placeholder copy.')
+      } else {
+        try {
+          const copyPrompt = `Generate a Meta Ads creative for: "${product}". Angle: ${angle}. Target audience: ${profile.targetAudience ?? 'customers'} in ${where}.${profile.tone ? ` Tone: ${profile.tone}.` : ''}${profile.avoid ? ` Never: ${profile.avoid}.` : ''} Respond ONLY with valid JSON: {"title":"(English management name)","description":"(English, one sentence strategy)","primaryText":"(ad copy in ${lang}, max 125 characters)","headline":"(headline in ${lang}, max 40 characters)","callToAction":"${cta}","targeting":"(short targeting description)","expectedRoas":0,"reasoning":"(why this works)"}.`
+          const validated = await generateStructured(ctx.provider, creativeSuggestionSchema, copyPrompt,
+            `You are an expert ad copywriter writing in ${lang} for ${where}. ${buildProfileContext(profile)} Respond only with valid JSON, no markdown.`)
+          const limited = enforceCopyLimits(validated)
+          copyWarnings.push(...limited.copyWarnings)
+          copy = { title: limited.title, description: limited.description, primaryText: limited.primaryText, headline: limited.headline, callToAction: limited.callToAction }
+        } catch (err) {
+          copyWarnings.push(`Ad copy generation failed: ${err instanceof Error ? err.message : 'unknown error'}. Placeholder text was used.`)
+        }
+      }
 
       // Generate the ad image via the enhanced image generator (multi-provider fallback)
-      const imagePrompt = imagePromptArg || `${product}, ${angle} marketing theme, professional digital ad creative, Marathi Indian audience, high quality, clean modern design, vibrant colors`
+      const imagePrompt = imagePromptArg || `${product}, ${angle} marketing theme, professional digital ad creative for ${profile.targetAudience ?? 'the target audience'} in ${where}, high quality, clean modern design, vibrant colors`
       const imageApiKey = ctx.providerType === 'openai' ? ctx.apiKey : ctx.embeddingKey
       const imgResult = await generateAdImage('openai', imageApiKey, imagePrompt, {
         size: '1024x1024',
         style: 'vivid',
         aspectRatio: (args.aspectRatio as '1:1' | '4:5' | '9:16' | '1.91:1' | '16:9') || undefined,
         quality: (args.quality as 'standard' | 'hd') || undefined,
-        brandColors: Array.isArray(args.brandColors) ? (args.brandColors as string[]) : undefined,
+        brandColors: Array.isArray(args.brandColors) ? (args.brandColors as string[]) : (profile.brandColors.length ? profile.brandColors : undefined),
         negativePrompt: (args.negativePrompt as string) || undefined,
       })
       let imageUrl: string | null = null
@@ -321,10 +419,8 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
           primaryText: copy.primaryText || null,
           headline: copy.headline || null,
           callToAction: copy.callToAction || cta,
-          expectedSpend: 1000,
-          expectedRoas: 2,
-          language: 'marathi',
-          audience: 'Maharashtra',
+          language: profile.primaryLanguage,
+          audience: where,
           imageUrl,
           campaignId,
           status: 'draft',
@@ -345,7 +441,9 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
         imageGenerated: !!imageUrl,
         imageProvider: imgResult.provider,
         imageError: imageUrl ? null : (imgResult.error || 'Image generation failed — creative saved with text only.'),
-        message: `Creative "${creative?.title}" created${imageUrl ? ` with image (${imgResult.provider})` : ' (image generation failed — text only)'}. Ready for review.`,
+        warnings: copyWarnings,
+        language: lang,
+        message: `Creative "${creative?.title}" created in ${lang}${imageUrl ? ` with image (${imgResult.provider})` : ' (image generation failed — text only)'}. Ready for review.${copyWarnings.length ? ` Issues: ${copyWarnings.join(' ')}` : ''}`,
       }
     }
 
@@ -353,48 +451,31 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
     case 'review_creative': {
       const creative = await db.adCreative.findUnique({ where: { id: args.creativeId as string, userId } }) as any
       if (!creative) return { error: 'Creative not found' }
-      const reviewPrompt = `Review this Marathi ad creative for the Maharashtrian audience:
-Title: ${creative.title}
-Description: ${creative.description}
-Primary Text: ${creative.primaryText || 'N/A'}
-Headline: ${creative.headline || 'N/A'}
-Call to Action: ${creative.callToAction || 'N/A'}
-Language: ${creative.language || 'marathi'}
-Provide JSON: { "score": number(1-10), "strengths": [], "weaknesses": [], "suggestions": [] }`
+      if (!ctx.provider) return { error: 'No AI provider configured' }
       try {
-        const prov = ctx.provider as { generateCompletion: (p: string, s?: string) => Promise<string> }
-        const text = await prov.generateCompletion(reviewPrompt, 'You are an expert ad creative reviewer. Respond only with valid JSON.')
-        try { return { review: JSON.parse(text), creativeId: creative.id, title: creative.title } }
-        catch { return { review: text, creativeId: creative.id, title: creative.title } }
-      } catch {
-        return { error: 'Failed to generate review', creativeId: creative.id }
+        // Same reviewer the API uses: profile-aware and schema-validated.
+        const review = await reviewCreative(ctx.provider, creative, undefined, await getProfile(userId))
+        return { review, creativeId: creative.id, title: creative.title }
+      } catch (err) {
+        return { error: `Failed to generate review: ${err instanceof Error ? err.message : 'unknown error'}`, creativeId: creative.id }
       }
     }
     case 'improve_creative': {
       const creative = await db.adCreative.findUnique({ where: { id: args.creativeId as string, userId } }) as any
       if (!creative) return { error: 'Creative not found' }
-      const improvePrompt = `Improve this Marathi ad creative:
-Title: ${creative.title}
-Primary Text: ${creative.primaryText || 'N/A'}
-Headline: ${creative.headline || 'N/A'}
-Return JSON: { title, primaryText (Marathi/Devanagari), headline (Marathi/Devanagari), callToAction, reasoning }`
+      if (!ctx.provider) return { error: 'No AI provider configured' }
       try {
-        const prov = ctx.provider as { generateCompletion: (p: string, s?: string) => Promise<string> }
-        const text = await prov.generateCompletion(improvePrompt, 'You are an expert Marathi ad copywriter. Respond only with valid JSON.')
-        try {
-          const improved = JSON.parse(text)
-          await db.adCreative.update({ where: { id: creative.id, userId }, data: {
-            title: improved.title || creative.title,
-            primaryText: improved.primaryText || creative.primaryText,
-            headline: improved.headline || creative.headline,
-            callToAction: improved.callToAction || creative.callToAction,
-          } })
-          return { success: true, improved, creativeId: creative.id, message: 'Creative improved and updated' }
-        } catch {
-          return { suggestions: text, creativeId: creative.id, message: 'Suggestions generated (manual update needed)' }
-        }
-      } catch {
-        return { error: 'Failed to generate improvements', creativeId: creative.id }
+        // Same improver the API uses: profile-aware, schema-validated, length-limited.
+        const improved = await suggestCreativeImprovements(ctx.provider, creative, undefined, await getProfile(userId))
+        await db.adCreative.update({ where: { id: creative.id, userId }, data: {
+          title: improved.title || creative.title,
+          primaryText: improved.primaryText || creative.primaryText,
+          headline: improved.headline || creative.headline,
+          callToAction: improved.callToAction || creative.callToAction,
+        } })
+        return { success: true, improved, creativeId: creative.id, message: 'Creative improved and updated' }
+      } catch (err) {
+        return { error: `Failed to generate improvements: ${err instanceof Error ? err.message : 'unknown error'}`, creativeId: creative.id }
       }
     }
 

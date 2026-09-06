@@ -17,6 +17,7 @@ import { retrieveRelevant } from '@/lib/ai/rag'
 import { logAction } from '@/lib/ai/audit'
 import { generateStructured, creativeSuggestionSchema, enforceCopyLimits } from '@/lib/ai/structured'
 import { checkBudget, buildPacingContext } from '@/lib/ai/budget-guard'
+import { getProfile, buildProfileContext, type BusinessProfile } from '@/lib/ai/profile'
 
 /**
  * How many past messages to keep in the model's context. Tool results are
@@ -102,7 +103,7 @@ export interface ManagerContext {
  *   1. Initialise (provider, strategy, memory, connection status, RAG context)
  *   2. Process messages (interactive chat with tool-calling, streaming)
    *   3. Generate ad creative images (GPT image → Pollinations fallback chain)
- *   4. Generate full creatives (Marathi ad copy + matching image, saved to DB)
+ *   4. Generate full creatives (ad copy in the profile language + matching image, saved to DB)
  *   5. Sync live Meta data
  *   6. Run autonomous routines (morning optimization, pacing, anomaly detection)
  *   7. Run full autonomy cycle (sync → analyze → act → reflect → learn)
@@ -230,6 +231,14 @@ export class AIManager {
         ? 'Meta is connected but no ad account is selected — Meta tools will fail. Suggest selecting an ad account.'
         : `Meta Ads is connected (account: ${conn.adAccountName || conn.adAccountId}, ID: ${conn.adAccountId}).`
 
+    // The profile decides language, script, market and currency for everything
+    // the agent writes. Loaded here so no prompt can fall back to an assumption.
+    let profileContext = ''
+    try {
+      const profile: BusinessProfile = await getProfile(this.userId)
+      profileContext = buildProfileContext(profile)
+    } catch {}
+
     let strategyContext = ''
     try {
       if (!this.strategy) this.strategy = await getStrategy(this.userId)
@@ -287,6 +296,7 @@ export class AIManager {
     const contextString = [
       `CONTEXT: ${metaStatus} The user has ${localCampaigns.length} local campaign(s) and ${localCreatives.length} local creative(s).`,
       'Call sync_campaign_insights before analyzing performance so you work with real Meta data.',
+      profileContext,
       strategyContext,
       pacingContext,
       memoryContext,
@@ -511,7 +521,7 @@ NOTE: this conversation is long, so the ${droppedCount} oldest message(s) are no
     const { product, angle = 'benefit-driven', callToAction: cta = 'LEARN_MORE',
             campaignId = null, imagePrompt = '', imageOptions } = params
 
-    // 1. Generate Marathi ad copy via the provider
+    // 1. Generate ad copy in the profile language via the provider
     let copy: { title: string; description: string; primaryText: string; headline: string; callToAction: string } = {
       title: `${product} — ${angle}`,
       description: `${angle} angle for ${product}`,
@@ -521,13 +531,16 @@ NOTE: this conversation is long, so the ${droppedCount} oldest message(s) are no
     }
 
     const copyWarnings: string[] = []
+    const profile = await getProfile(this.userId).catch(() => null)
+    const lang = profile?.primaryLanguageLabel ?? 'English'
+    const where = profile ? [...profile.marketRegions, ...profile.marketCities, profile.marketCountry].filter(Boolean).join(', ') : 'the target market'
     try {
-      const copyPrompt = `Generate a Meta Ads creative for: "${product}". Angle: ${angle}. Target audience: Maharashtra, India (Marathi-speaking). Respond ONLY with valid JSON: {"title":"(English management name)","description":"(English, one sentence strategy)","primaryText":"(Marathi Devanagari ad copy, max 125 characters)","headline":"(Marathi Devanagari headline, max 40 characters)","callToAction":"${cta}","targeting":"(short targeting description)","expectedRoas":0,"reasoning":"(why this works)"}.`
+      const copyPrompt = `Generate a Meta Ads creative for: "${product}". Angle: ${angle}. Target audience: ${profile?.targetAudience ?? 'customers'} in ${where}.${profile?.tone ? ` Tone: ${profile.tone}.` : ''}${profile?.avoid ? ` Never: ${profile.avoid}.` : ''} Respond ONLY with valid JSON: {"title":"(English management name)","description":"(English, one sentence strategy)","primaryText":"(ad copy in ${lang}, max 125 characters)","headline":"(headline in ${lang}, max 40 characters)","callToAction":"${cta}","targeting":"(short targeting description)","expectedRoas":0,"reasoning":"(why this works)"}.`
       const validated = await generateStructured(
         this.provider!,
         creativeSuggestionSchema,
         copyPrompt,
-        'You are an expert Marathi ad copywriter for the Maharashtrian market. Respond only with valid JSON, no markdown.',
+        `You are an expert ad copywriter writing in ${lang} for ${where}. ${profile ? buildProfileContext(profile) : ''} Respond only with valid JSON, no markdown.`,
       )
       const limited = enforceCopyLimits(validated)
       copyWarnings.push(...limited.copyWarnings)
@@ -547,8 +560,8 @@ NOTE: this conversation is long, so the ${droppedCount} oldest message(s) are no
     }
 
     // 2. Generate the ad image via the enhanced image generator
-    const finalImagePrompt = imagePrompt || `${product}, ${angle} marketing theme, professional digital ad creative, Marathi Indian audience, high quality, clean modern design, vibrant colors`
-    const imgResult = await this.generateImage(finalImagePrompt, imageOptions)
+    const finalImagePrompt = imagePrompt || `${product}, ${angle} marketing theme, professional digital ad creative for ${profile?.targetAudience ?? 'the target audience'} in ${where}, high quality, clean modern design, vibrant colors`
+    const imgResult = await this.generateImage(finalImagePrompt, { brandColors: profile?.brandColors?.length ? profile.brandColors : undefined, ...imageOptions })
 
     const imageUrl: string | null = imgResult.success && imgResult.imageUrl ? imgResult.imageUrl : null
 
@@ -563,8 +576,8 @@ NOTE: this conversation is long, so the ${droppedCount} oldest message(s) are no
         callToAction: copy.callToAction || cta,
         expectedSpend: 1000,
         expectedRoas: 2,
-        language: 'marathi',
-        audience: 'Maharashtra',
+        language: profile?.primaryLanguage ?? 'en',
+        audience: where,
         imageUrl,
         campaignId,
         status: 'draft',

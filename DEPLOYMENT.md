@@ -46,7 +46,7 @@ Set in Vercel → Settings → Environment Variables (Production, Preview, Devel
 | `RUNNER_SECRET` | Authenticates manual runs of the autonomous routines |
 | `CRON_SECRET` | Vercel Cron sends this as a Bearer token to `/api/cron/run-jobs` |
 | `VAULT_ENABLED` | `true` — encrypt API keys and tokens in Supabase Vault |
-| `NEXT_PUBLIC_ALLOW_SIGNUP` | `false`. Leave it false: this tool runs live ad spend, and open signup lets anyone create an account on it |
+| `NEXT_PUBLIC_ALLOW_SIGNUP` | `true`. This is a multi-tenant SaaS: any business signs up and brings its own Meta app. (Baked in at build time — a change needs a redeploy.) |
 | `IMAGE_FALLBACK_ENABLED` | `true` allows the free Pollinations image provider. Set `false` for client work — it has no SLA, no moderation and no commercial licence |
 | `NEXT_TELEMETRY_DISABLED` | `1` |
 
@@ -61,8 +61,12 @@ SQL editor:
   expiry, and the rate-limit table + `bump_rate_limit()`.
 - `0002_private_storage.sql` — makes every storage bucket private with
   owner-scoped RLS, and blocks SVG uploads.
+- `0003_business_profiles.sql` — the per-user business profile (language,
+  script, market, currency, audience, tone), `knowledge_documents.source_url`
+  for website re-crawls.
 
-Both are applied to the live database as of 2026-08-30.
+All three are applied to the live database (0001–0002 on 2026-08-30, 0003 on
+2026-09-05).
 
 **Apply migrations before deploying code that depends on them.** The app writes
 `daily_metrics.level` and upserts against `daily_metrics_unique_row`; if the
@@ -97,12 +101,42 @@ Returns `{"ok":true,"status":"healthy"}` publicly. Send the `x-runner-secret`
 header for the full report (env presence, table inventory, pgvector status) —
 the detail is gated because it is otherwise free reconnaissance.
 
+## Multi-tenant architecture
+
+Any business signs up (self-serve signup is ON — `NEXT_PUBLIC_ALLOW_SIGNUP=true`)
+and brings its **own** Meta developer app. Because every business uses its own
+App ID / secret / token, the platform never needs Meta App Review: each app is
+in development mode managing ad accounts its own admin already controls.
+
+**Onboarding is conversational.** The AI Manager runs it with five tools:
+`get_business_profile` → `ingest_website` (crawls the site into the pgvector
+knowledge base and pre-fills the profile) → `set_business_profile` (language,
+script, market, audience, tone, landing page) → `connect_meta_account`
+(validates the token against the app, exchanges it for a 60-day token, stores
+secrets in Vault) → `select_ad_account`.
+
+**Language and market are per user**, held in `business_profiles` and injected
+into every prompt as a BUSINESS PROFILE block. Nothing about language, script,
+market or currency is hardcoded any more; the first account ("Marathi Dnyan",
+Marathi/Maharashtra/INR) is simply a seeded profile row.
+
+**Meta calls: MCP first, Graph API second.** `src/lib/meta/mcp-bridge.ts`
+spawns `meta-ads-mcp` per request with the user's credentials in its env
+(`next.config.ts` traces the binary into the bundle). Any MCP failure — no
+such tool, spawn error, schema mismatch, timeout — falls through to the direct
+Graph client in `src/lib/meta/client.ts`, which is also the only path that can
+`create_ad` (MCP has `create_ad_set` but no `create_ad`). Results carry
+`via: "mcp" | "graph"`. Disable MCP with `META_MCP_ENABLED=false`.
+
 ## Still outstanding
 
-- **Meta App Review.** Clients cannot paste an App Secret. Production needs
-  Facebook Login for Business plus App Review for `ads_management` /
-  `ads_read` / `business_management`, and Business Verification. This is the
-  long pole and it is not in our control — start it early.
+- **MCP argument schemas are untested against real calls.** The bridge passes
+  our tool arguments through to `meta-ads-mcp` and falls back to Graph on any
+  rejection, so nothing breaks — but until each tool has been exercised against
+  a live account, some calls will silently take the Graph path every time.
+  Watch the `via` field in tool results.
+- **The Meta token expiry is the real onboarding risk**, not App Review (each
+  business uses its own app, so no review is needed). See below.
 - **Meta access tokens expire in ~60 days** and nothing renews them. The app
   warns when expiry is within 7 days; reconnect before it lapses or automation
   stops.

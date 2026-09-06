@@ -15,6 +15,7 @@ import {
   metaListAudiences, metaCreateCustomAudience, metaCreateLookalikeAudience, metaPreviewAd,
 } from '@/lib/meta/ops'
 import { getMetaConnection } from '@/lib/meta/user-client'
+import { tryMcp } from '@/lib/meta/mcp-bridge'
 import type { MetaTargeting, OptimizationGoal, BillingEvent, SpecialAdCategory } from '@/lib/meta/types'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -43,6 +44,7 @@ const META_OP_TOOLS = new Set([
 
 const LOCAL_TOOL_NAMES = new Set([
   'ask_user_question',
+  'get_business_profile', 'set_business_profile', 'ingest_website', 'connect_meta_account', 'select_ad_account',
   'get_local_campaigns', 'get_local_creatives', 'get_local_campaign',
   'create_local_campaign', 'update_local_campaign', 'delete_local_campaign',
   'create_local_creative', 'update_local_creative', 'delete_local_creative',
@@ -171,7 +173,27 @@ function asNumber(v: unknown): number | undefined {
   return Number.isFinite(n) ? n : undefined
 }
 
+/**
+ * MCP first, Graph second. Every failure on the MCP side is caught and the
+ * same call is retried against the direct Graph client, so the agent only
+ * ever sees one answer. `via` says which path produced it.
+ */
 async function executeMetaOp(tool: string, args: Record<string, unknown>, userId: string): Promise<unknown> {
+  const mcp = await tryMcp(tool, args, userId)
+  if (mcp.attempted && mcp.ok) {
+    return typeof mcp.result === 'object' && mcp.result !== null
+      ? { ...(mcp.result as Record<string, unknown>), via: 'mcp' }
+      : { result: mcp.result, via: 'mcp' }
+  }
+  const fallbackReason = mcp.attempted ? mcp.error : mcp.reason
+  const graph = await executeGraphOp(tool, args, userId)
+  if (graph && typeof graph === 'object' && !Array.isArray(graph)) {
+    return { ...(graph as Record<string, unknown>), via: 'graph', ...(mcp.attempted ? { mcpFallbackReason: fallbackReason } : {}) }
+  }
+  return graph
+}
+
+async function executeGraphOp(tool: string, args: Record<string, unknown>, userId: string): Promise<unknown> {
   switch (tool) {
     // ── Reads ──────────────────────────────────────────────────────────
     case 'list_campaigns':

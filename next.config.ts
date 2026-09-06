@@ -1,6 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // meta-ads-mcp is spawned as a child process at runtime by a path built
+  // with process.cwd(), which Next's file tracer cannot follow. Without this
+  // the binary is simply absent from the serverless bundle and every MCP
+  // call fails with ENOENT — the actual reason it "did not work on Vercel".
+  outputFileTracingIncludes: {
+    '/api/**': ['./node_modules/meta-ads-mcp/build/**', './node_modules/meta-ads-mcp/package.json'],
+  },
+  serverExternalPackages: ['@modelcontextprotocol/sdk', 'meta-ads-mcp'],
   // Standalone output is useful for Docker/self-hosting; on Vercel keep the
   // default build output so the platform can optimize the bundle.
   output: process.env.VERCEL ? undefined : "standalone",

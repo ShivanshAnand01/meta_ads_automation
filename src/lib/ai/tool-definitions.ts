@@ -1,5 +1,6 @@
 import type { ToolDefinition } from './types'
 import { DELIVERY_TOOLS } from './tool-definitions.delivery'
+import { ONBOARDING_TOOLS } from './tool-definitions.onboarding'
 
 /**
  * LOCAL_TOOLS — tools that operate entirely on the local platform database.
@@ -57,7 +58,7 @@ export const LOCAL_TOOLS: ToolDefinition[] = [
       name: 'get_local_creatives',
       description:
         'Retrieve ALL ad creatives stored in the local platform database for the current user. ' +
-        'Each creative includes: id, title, description, primaryText (the Marathi ad copy), ' +
+        'Each creative includes: id, title, description, primaryText (the ad copy in the profile language), ' +
         'headline, callToAction, status (draft / approved / rejected / published), reviewStatus ' +
         '(pending / approved / rejected), language, audience, imageUrl, and performance metrics ' +
         '(impressions, clicks, conversions, actualSpend, revenue, and computed ROAS). ' +
@@ -104,7 +105,7 @@ export const LOCAL_TOOLS: ToolDefinition[] = [
         properties: {
           name: { type: 'string', description: 'A descriptive name for the campaign (e.g. "Diwali Ebook Sale 2024")' },
           objective: { type: 'string', description: 'Meta Ads campaign objective. Valid values: OUTCOME_SALES, OUTCOME_AWARENESS, OUTCOME_TRAFFIC, OUTCOME_ENGAGEMENT, OUTCOME_LEAD_GENERATION, OUTCOME_APP_PROMOTION, OUTCOME_MESSAGES, OUTCOME_VIDEO_VIEWS' },
-          budget: { type: 'number', description: 'Budget amount in Indian Rupees (INR). For daily budgets, this is the amount spent per day. For lifetime budgets, this is the total amount over the campaign duration.' },
+          budget: { type: 'number', description: 'Budget amount in the ad account currency. For daily budgets, this is the amount spent per day. For lifetime budgets, this is the total amount over the campaign duration.' },
           budgetType: { type: 'string', enum: ['daily', 'lifetime'], description: '"daily" for a budget that resets each day, or "lifetime" for a total campaign budget' },
           startDate: { type: 'string', description: 'Campaign start date in ISO 8601 format (e.g. "2024-12-01T00:00:00Z"). If omitted, the campaign starts when published.' },
           endDate: { type: 'string', description: 'Campaign end date in ISO 8601 format. Only meaningful for lifetime budgets.' },
@@ -130,7 +131,7 @@ export const LOCAL_TOOLS: ToolDefinition[] = [
           campaignId: { type: 'string', description: 'The unique ID of the campaign to update' },
           name: { type: 'string', description: 'New campaign name' },
           status: { type: 'string', enum: ['draft', 'active', 'paused', 'completed'], description: 'New campaign status (local only — does not affect live Meta campaigns)' },
-          budget: { type: 'number', description: 'New budget amount in INR' },
+          budget: { type: 'number', description: 'New budget amount in the ad account currency' },
           budgetType: { type: 'string', enum: ['daily', 'lifetime'], description: 'New budget type' },
         },
         required: ['campaignId'],
@@ -162,13 +163,13 @@ export const LOCAL_TOOLS: ToolDefinition[] = [
       description:
         'Create a new ad creative in the local database for later review and publishing. ' +
         'The creative is stored with "draft" status and "pending" review status. ' +
-        'Generate Marathi (Devanagari script) ad copy for the primaryText and headline to target ' +
+        'Generate ad copy in the business profile language for the primaryText and headline to target ' +
         'the Maharashtrian audience in India. ' +
         'Required fields: title (English, for management purposes) and description (English, one sentence ' +
         'describing the creative strategy). ' +
-        'Optional: primaryText (Marathi ad copy), headline (Marathi headline), callToAction (e.g. LEARN_MORE, ' +
+        'Optional: primaryText (ad copy in the profile language), headline (headline in the profile language), callToAction (e.g. LEARN_MORE, ' +
         'SHOP_NOW, SIGN_UP, DOWNLOAD), expectedSpend (INR), expectedRoas (return on ad spend), language ' +
-        '(default: marathi), audience (default: Maharashtra), imageUrl (if an image already exists), ' +
+        '(defaults to the profile language), audience (defaults to the profile market), imageUrl (if an image already exists), ' +
         'and campaignId (to associate the creative with a campaign). ' +
         'Returns the new creative ID and a confirmation message. ' +
         'This is a safe operation — no ad spend is triggered until the creative is reviewed, approved, ' +
@@ -178,13 +179,13 @@ export const LOCAL_TOOLS: ToolDefinition[] = [
         properties: {
           title: { type: 'string', description: 'Creative title in English (for management/identification purposes)' },
           description: { type: 'string', description: 'One-sentence description of the creative strategy in English' },
-          primaryText: { type: 'string', description: 'Primary ad copy text in Marathi (Devanagari script). This is the main body of the ad visible to users.' },
-          headline: { type: 'string', description: 'Catchy ad headline in Marathi (Devanagari script)' },
+          primaryText: { type: 'string', description: 'Primary ad copy text in the profile language. This is the main body of the ad visible to users.' },
+          headline: { type: 'string', description: 'Catchy ad headline in the profile language' },
           callToAction: { type: 'string', description: 'Meta Ads call-to-action type. Valid values: LEARN_MORE, SHOP_NOW, SIGN_UP, DOWNLOAD, BUY_NOW, CONTACT_US, SUBSCRIBE, GET_OFFER, BOOK_TRAVEL, DOWNLOAD_LINK' },
-          expectedSpend: { type: 'number', description: 'Expected daily spend for this creative in INR (for planning purposes)' },
-          expectedRoas: { type: 'number', description: 'Expected return on ad spend (e.g. 2.5 means ₹2.50 revenue per ₹1 spent)' },
-          language: { type: 'string', description: 'Language of the ad copy (default: marathi)' },
-          audience: { type: 'string', description: 'Target audience description (default: Maharashtra)' },
+          expectedSpend: { type: 'number', description: 'Expected daily spend for this creative in the account currency (for planning purposes)' },
+          expectedRoas: { type: 'number', description: 'Expected return on ad spend (e.g. 2.5 means 2.50 revenue per ₹1 spent)' },
+          language: { type: 'string', description: 'Language of the ad copy (defaults to the profile language)' },
+          audience: { type: 'string', description: 'Target audience description (defaults to the profile market)' },
           imageUrl: { type: 'string', description: 'URL of an existing image to attach to this creative. If you want to generate a new image, use generate_ad_image or generate_creative_with_image instead.' },
           campaignId: { type: 'string', description: 'ID of a campaign to associate this creative with' },
         },
@@ -208,8 +209,8 @@ export const LOCAL_TOOLS: ToolDefinition[] = [
           creativeId: { type: 'string', description: 'The unique ID of the creative to update' },
           title: { type: 'string', description: 'New creative title (English)' },
           description: { type: 'string', description: 'New creative description (English)' },
-          primaryText: { type: 'string', description: 'New primary ad copy (Marathi Devanagari)' },
-          headline: { type: 'string', description: 'New headline (Marathi Devanagari)' },
+          primaryText: { type: 'string', description: 'New primary ad copy (profile language)' },
+          headline: { type: 'string', description: 'New headline (profile language)' },
           callToAction: { type: 'string', description: 'New call-to-action type' },
           status: { type: 'string', enum: ['draft', 'approved', 'rejected', 'published'], description: 'New creative status' },
           reviewStatus: { type: 'string', enum: ['pending', 'approved', 'rejected'], description: 'New review status' },
@@ -276,7 +277,7 @@ export const LOCAL_TOOLS: ToolDefinition[] = [
     function: {
       name: 'generate_creative_with_image',
       description:
-        'Generate a COMPLETE ad creative in a single step — writes Marathi ad copy (title, primary text, ' +
+        'Generate a COMPLETE ad creative in a single step — writes ad copy in the profile language (title, primary text, ' +
         'headline, CTA) AND generates a matching AI image, then saves both to the local database as a draft ' +
         'creative ready for review. ' +
         '\n\n' +
@@ -298,7 +299,7 @@ export const LOCAL_TOOLS: ToolDefinition[] = [
       parameters: {
         type: 'object',
         properties: {
-          product: { type: 'string', description: 'The product or service being advertised (e.g. "Marathi sales ebook", "Diwali discount sale", "real estate listing in Pune")' },
+          product: { type: 'string', description: 'The product or service being advertised (e.g. "sales ebook", "Diwali discount sale", "dental checkup offer")' },
           angle: { type: 'string', description: 'Creative angle or theme. Common values: emotional, scarcity, festival, benefit-driven, social-proof, urgency, testimonial, aspirational, comparison, storytelling. This shapes both the ad copy and the image prompt.' },
           imagePrompt: { type: 'string', description: 'Optional custom image description. If omitted, one is automatically derived from the product and angle. Provide this when you want specific visual control.' },
           callToAction: { type: 'string', description: 'Meta Ads CTA type (default: LEARN_MORE). Valid: LEARN_MORE, SHOP_NOW, DOWNLOAD, SIGN_UP, BUY_NOW, CONTACT_US, SUBSCRIBE, GET_OFFER' },
@@ -319,7 +320,7 @@ export const LOCAL_TOOLS: ToolDefinition[] = [
       name: 'review_creative',
       description:
         'Review an existing ad creative and provide a quality assessment. ' +
-        'The AI reads the creative\'s title, description, primary text (Marathi copy), headline, CTA, ' +
+        'The AI reads the creative\'s title, description, primary text, headline, CTA, ' +
         'and language, then returns a structured review with: ' +
         '- score (1-10 quality rating) ' +
         '- strengths (what works well) ' +
@@ -327,7 +328,7 @@ export const LOCAL_TOOLS: ToolDefinition[] = [
         '- suggestions (specific actionable recommendations) ' +
         '\n\n' +
         'Use this before publishing a creative to Meta to ensure quality, or when the user asks for feedback ' +
-        'on their ad copy. The review is tailored to the Maharashtrian Marathi-speaking audience.',
+        'on their ad copy. The review is tailored to the audience in the business profile.',
       parameters: {
         type: 'object',
         properties: {
@@ -342,12 +343,12 @@ export const LOCAL_TOOLS: ToolDefinition[] = [
     function: {
       name: 'improve_creative',
       description:
-        'Generate specific improvement suggestions for an ad creative, including rewritten Marathi copy. ' +
+        'Generate specific improvement suggestions for an ad creative, including rewritten copy in the profile language. ' +
         'The AI analyzes the existing creative (title, primary text, headline, CTA) and returns an ' +
         'improved version with: ' +
         '- Improved title (English, for management) ' +
-        '- Improved primaryText (Marathi Devanagari) ' +
-        '- Improved headline (Marathi Devanagari) ' +
+        '- Improved primaryText (in the profile language) ' +
+        '- Improved headline (in the profile language) ' +
         '- Improved callToAction ' +
         '- Reasoning (why the changes improve performance) ' +
         '\n\n' +
@@ -809,7 +810,7 @@ export const MASTERMIND_TOOLS: ToolDefinition[] = [
       parameters: {
         type: 'object',
         properties: {
-          text: { type: 'string', description: 'The text to convert to speech. Use Marathi text for Marathi-speaking clients.' },
+          text: { type: 'string', description: 'The text to convert to speech, in the language the client writes in.' },
           voice: { type: 'string', enum: ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'], description: 'OpenAI TTS voice persona. nova = warm female, onyx = deep male, alloy = neutral, echo = clear male, fable = expressive, shimmer = soft female.' },
         },
         required: ['text'],
@@ -871,7 +872,7 @@ export const MASTERMIND_TOOLS: ToolDefinition[] = [
 export const ALL_TOOLS: ToolDefinition[] = (() => {
   const seen = new Set<string>()
   const out: ToolDefinition[] = []
-  for (const tool of [...LOCAL_TOOLS, ...MASTERMIND_TOOLS, ...DELIVERY_TOOLS]) {
+  for (const tool of [...ONBOARDING_TOOLS, ...LOCAL_TOOLS, ...MASTERMIND_TOOLS, ...DELIVERY_TOOLS]) {
     if (seen.has(tool.function.name)) continue
     seen.add(tool.function.name)
     out.push(tool)

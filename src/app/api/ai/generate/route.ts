@@ -7,6 +7,7 @@ import { resolveSecrets, SECRET_KEYS } from '@/lib/secrets'
 import { enforceRateLimit } from '@/lib/rate-limit'
 import { StructuredOutputError } from '@/lib/ai/structured'
 import type { AIProviderType } from '@/lib/ai/types'
+import { getProfile } from '@/lib/ai/profile'
 
 // Vercel kills a function at its maxDuration. Copy plus images for several
 // variations needs real headroom.
@@ -88,12 +89,13 @@ export async function POST(request: Request) {
     const imageApiKey =
       settings.provider === 'openai' ? settings.apiKey : settings.embeddingKey || settings.apiKey
 
-    const context = { productType, productName, productDescription, targetAudience, budget, pastPerformance }
+    const profile = await getProfile(userId)
+    const context = { productType, productName, productDescription, targetAudience: targetAudience || profile.targetAudience || '', budget, pastPerformance }
 
     const suggestions =
       safeCount > 1
-        ? await generateMultipleCreativeSuggestions(provider, { ...context, count: safeCount })
-        : [await generateCreativeSuggestion(provider, context)]
+        ? await generateMultipleCreativeSuggestions(provider, { ...context, count: safeCount }, profile)
+        : [await generateCreativeSuggestion(provider, context, profile)]
 
     const warnings: string[] = []
 
@@ -135,7 +137,7 @@ export async function POST(request: Request) {
             targeting: s.targeting,
             // Model-estimated, never measured. The UI labels it as such.
             expectedRoas: s.expectedRoas,
-            language: 'marathi',
+            language: profile.primaryLanguage,
             status: 'draft',
             reviewStatus: 'pending',
             imageUrl: images[i]?.url ?? null,
