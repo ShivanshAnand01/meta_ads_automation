@@ -1,5 +1,6 @@
 import { getMCPClient } from './mcp-client'
 import { getMetaConnection } from './user-client'
+import { adaptArgsForMcp } from './mcp-args'
 
 /**
  * MCP first, Graph API second.
@@ -58,19 +59,6 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   })
 }
 
-/** Shape our arguments into what the MCP schema expects for the few that differ. */
-function adaptArgs(tool: string, args: Record<string, unknown>, accountId: string | null): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...args }
-  if (accountId && !out.account_id) out.account_id = `act_${accountId}`
-
-  if (tool === 'update_campaign_budget') {
-    // MCP's update_campaign takes the campaign id plus the fields to change.
-    if (out.daily_budget != null) out.daily_budget = Number(out.daily_budget)
-    if (out.lifetime_budget != null) out.lifetime_budget = Number(out.lifetime_budget)
-  }
-  return out
-}
-
 /**
  * Try the operation over MCP. Never throws — every failure is a structured
  * "fall back" signal so the caller can route to Graph.
@@ -85,7 +73,7 @@ export async function tryMcp(tool: string, args: Record<string, unknown>, userId
     if (!conn) return { attempted: false, reason: 'Meta not connected' }
 
     const mcp = await withTimeout(getMCPClient(userId), 10_000, 'MCP start')
-    const result = await withTimeout(mcp.callTool(mcpName, adaptArgs(tool, args, conn.adAccountId)), MCP_TIMEOUT_MS, `MCP ${mcpName}`)
+    const result = await withTimeout(mcp.callTool(mcpName, adaptArgsForMcp(tool, args, { adAccountId: conn.adAccountId, currency: conn.adAccountCurrency || 'INR' })), MCP_TIMEOUT_MS, `MCP ${mcpName}`)
 
     // The MCP server returns its own error envelopes as text; treat those as
     // failures so Graph gets a turn rather than surfacing a string to the agent.
