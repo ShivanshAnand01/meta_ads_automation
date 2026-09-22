@@ -1,302 +1,230 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Badge } from '@/components/ui/badge'
-import { Switch } from '@/components/ui/switch'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, Loader2, CalendarClock, Trash2, Clock, CheckCircle2, XCircle, RefreshCw } from 'lucide-react'
-import { motion } from 'framer-motion'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { PageHeader, StatusPill, EmptyState } from '@/components/ui/metric'
+import { TextField, ChipGroup, Field } from '@/components/ui/field'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { Plus, Play, Pause, Trash2, Loader2, CalendarClock, Sun, Gauge, Radar, FileBarChart, Brain, Wand2 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 
-interface ScheduledJob {
-  id: string
-  type: string
-  campaignId: string | null
-  cronExpression: string
-  status: string
-  lastRunAt: string | null
-  nextRunAt: string | null
-  createdAt: string
+/**
+ * Automations.
+ *
+ * Routines the agent runs without being asked. The honest constraint is
+ * stated on the page: the hosted plan runs the scheduler once a day, so a
+ * job's cron sets *whether* it is due at that tick, not a precise time.
+ */
+
+interface Job { id: string; type: string; campaignId: string | null; cronExpression: string; status: string; lastRunAt: string | null; nextRunAt: string | null; createdAt: string }
+interface Campaign { id: string; name: string }
+
+const ROUTINES: Record<string, { label: string; description: string; icon: LucideIcon; suggested: string }> = {
+  morning_optimization: { label: 'Morning check', description: 'Reviews yesterday, checks pacing against your caps, proposes what to scale or pause.', icon: Sun, suggested: '30 3 * * *' },
+  budget_pacing: { label: 'Budget pacing', description: 'Flags campaigns burning faster than planned before the day is over.', icon: Gauge, suggested: '30 3 * * *' },
+  anomaly_detection: { label: 'Anomaly watch', description: 'Catches sudden drops in results or jumps in cost.', icon: Radar, suggested: '30 3 * * *' },
+  weekly_report: { label: 'Weekly report', description: 'Monday summary: winners, losers, and next week\'s plan.', icon: FileBarChart, suggested: '30 3 * * 1' },
+  reflection: { label: 'Learn from the week', description: 'Updates the agent\'s memory of what worked for your business.', icon: Brain, suggested: '30 3 * * 0' },
+  custom: { label: 'Custom prompt', description: 'Run any instruction on a schedule.', icon: Wand2, suggested: '30 3 * * *' },
 }
 
-interface Campaign {
-  id: string
-  name: string
-}
-
-const jobTypes: Record<string, { label: string; description: string }> = {
-  morning_optimization: { label: 'Morning Optimization', description: 'Daily check-in: performance review, budget pacing, and recommended actions' },
-  budget_pacing: { label: 'Budget Pacing', description: 'Hourly budget check to avoid overspend and flag under-performing campaigns' },
-  anomaly_detection: { label: 'Anomaly Detection', description: 'Detect unusual performance shifts and alert you automatically' },
-  weekly_report: { label: 'Weekly Report', description: 'Monday summary of top spenders, winners, losers, and next-week actions' },
-  reflection: { label: 'Reflection & Learning', description: 'Review recent actions and update the manager memory / strategy' },
-  custom: { label: 'Custom', description: 'Run a custom prompt on schedule' },
-}
-
-const cronPresets = [
-  { label: 'Every hour', value: '0 * * * *' },
-  { label: 'Every day at 9 AM', value: '0 9 * * *' },
-  { label: 'Every day at 12 PM', value: '0 12 * * *' },
-  { label: 'Every Monday at 9 AM', value: '0 9 * * 1' },
-  { label: 'Every 6 hours', value: '0 */6 * * *' },
-  { label: 'Every 12 hours', value: '0 */12 * * *' },
+const PRESETS = [
+  { value: '30 3 * * *', label: 'Every day' },
+  { value: '30 3 * * 1', label: 'Mondays' },
+  { value: '30 3 * * 0', label: 'Sundays' },
+  { value: '30 3 1 * *', label: '1st of the month' },
 ]
 
+function describeCron(expr: string): string {
+  const p = PRESETS.find((x) => x.value === expr)
+  if (p) return p.label
+  return `cron ${expr}`
+}
+
+function fmt(d: string | null): string {
+  if (!d) return '—'
+  return new Date(d).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })
+}
+
 export default function SchedulePage() {
-  const [jobs, setJobs] = useState<ScheduledJob[]>([])
+  const [jobs, setJobs] = useState<Job[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [loading, setLoading] = useState(true)
+  const [reloadKey, setReloadKey] = useState(0)
+  const [busyId, setBusyId] = useState<string | null>(null)
   const [showCreate, setShowCreate] = useState(false)
-  const [creating, setCreating] = useState(false)
-  const [form, setForm] = useState({
-    type: 'morning_optimization',
-    campaignId: '',
-    cronExpression: '0 9 * * *',
-  })
+  const [deleteFor, setDeleteFor] = useState<Job | null>(null)
 
   useEffect(() => {
-    fetchJobs()
-    fetchCampaigns()
-  }, [])
+    let cancelled = false
+    Promise.all([
+      fetch('/api/schedule').then((r) => r.json()),
+      fetch('/api/campaigns').then((r) => r.json()).catch(() => ({ campaigns: [] })),
+    ]).then(([j, c]) => { if (cancelled) return; setJobs(j.jobs || []); setCampaigns(c.campaigns || []) })
+      .catch(() => toast.error('Could not load automations'))
+      .finally(() => !cancelled && setLoading(false))
+    return () => { cancelled = true }
+  }, [reloadKey])
 
-  async function fetchJobs() {
+  async function toggle(job: Job) {
+    const status = job.status === 'active' ? 'paused' : 'active'
+    setBusyId(job.id)
     try {
-      const res = await fetch('/api/schedule')
-      const json = await res.json()
-      setJobs(json.jobs || [])
-    } catch {
-      toast.error('Failed to load scheduled jobs')
-    } finally {
-      setLoading(false)
-    }
+      const res = await fetch(`/api/schedule/${job.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || 'Update failed')
+      setJobs((prev) => prev.map((x) => (x.id === job.id ? { ...x, ...j.job } : x)))
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Update failed')
+    } finally { setBusyId(null) }
   }
 
-  async function fetchCampaigns() {
-    try {
-      const res = await fetch('/api/campaigns')
-      const json = await res.json()
-      setCampaigns(json.campaigns || [])
-    } catch {}
+  async function remove(job: Job) {
+    const res = await fetch(`/api/schedule/${job.id}`, { method: 'DELETE' })
+    if (!res.ok) { toast.error('Could not delete'); throw new Error('delete failed') }
+    setJobs((prev) => prev.filter((x) => x.id !== job.id))
+    toast.success('Automation removed')
   }
 
-  async function handleCreate() {
-    setCreating(true)
-    try {
-      const res = await fetch('/api/schedule', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      })
-      if (res.ok) {
-        toast.success('Scheduled job created!')
-        fetchJobs()
-        setShowCreate(false)
-      }
-    } catch {
-      toast.error('Failed to create scheduled job')
-    } finally {
-      setCreating(false)
-    }
-  }
+  if (loading) return <PageSkeleton rows={3} />
 
-  async function toggleJob(id: string, currentStatus: string) {
-    const newStatus = currentStatus === 'active' ? 'paused' : 'active'
-    try {
-      await fetch(`/api/schedule/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus }),
-      })
-      toast.success(`Job ${newStatus}`)
-      fetchJobs()
-    } catch {
-      toast.error('Failed to toggle job')
-    }
-  }
-
-  async function deleteJob(id: string) {
-    if (!confirm('Delete this scheduled job?')) return
-    try {
-      await fetch(`/api/schedule/${id}`, { method: 'DELETE' })
-      toast.success('Job deleted')
-      fetchJobs()
-    } catch {
-      toast.error('Failed to delete')
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 w-32 rounded bg-muted" />
-          <div className="h-96 rounded bg-muted" />
-        </div>
-      </div>
-    )
-  }
+  const active = jobs.filter((j) => j.status === 'active').length
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-          <h1 className="text-3xl font-bold tracking-tight gradient-text">Schedule</h1>
-          <p className="text-muted-foreground">Automate your Meta Ads workflow with scheduled jobs</p>
-        </motion.div>
-        <Dialog open={showCreate} onOpenChange={setShowCreate}>
-          <DialogTrigger render={<Button className="gradient-bg animate-gradient shadow-lg card-3d"><Plus className="mr-2 h-4 w-4" />New Schedule</Button>} />
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create Scheduled Job</DialogTitle>
-              <DialogDescription>Automate a recurring Meta Ads task</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label>Job Type</Label>
-                <Select value={form.type} onValueChange={(v) => { if (v) setForm({ ...form, type: v }) }}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(jobTypes).map(([key, info]) => (
-                      <SelectItem key={key} value={key}>{info.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">{jobTypes[form.type]?.description}</p>
-              </div>
-              {form.type === 'custom' && (
-                <div className="space-y-2">
-                  <Label>Campaign</Label>
-                  <Select value={form.campaignId} onValueChange={(v) => { if (v) setForm({ ...form, campaignId: v }) }}>
-                    <SelectTrigger><SelectValue placeholder="Select campaign" /></SelectTrigger>
-                    <SelectContent>
-                      {campaigns.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+      <PageHeader
+        title="Automations"
+        description="Routines the agent runs on its own. Anything that moves money still goes through approval."
+        meta={active > 0 ? <StatusPill tone="good">{active} running</StatusPill> : <StatusPill tone="neutral">Nothing scheduled</StatusPill>}
+        actions={<Button onClick={() => setShowCreate(true)}><Plus aria-hidden="true" className="mr-1.5 h-4 w-4" /> Add automation</Button>}
+      />
+
+      <p className="rounded-lg border border-border bg-muted/40 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
+        The scheduler wakes once a day at 06:00 IST and runs every routine that is due. Daily jobs run then; weekly and monthly ones on their day.
+      </p>
+
+      {jobs.length === 0 ? (
+        <div className="rounded-xl border border-border bg-card">
+          <EmptyState icon={CalendarClock} title="No automations yet" description="Start with the Morning check. It reads yesterday's numbers and tells you what to do before you have had chai." action={<Button onClick={() => setShowCreate(true)}><Plus aria-hidden="true" className="mr-1.5 h-4 w-4" /> Add automation</Button>} />
+        </div>
+      ) : (
+        <ul className="grid grid-cols-1 gap-3 md:grid-cols-2" aria-label="Automations">
+          {jobs.map((job) => {
+            const r = ROUTINES[job.type] ?? ROUTINES.custom
+            const Icon = r.icon
+            const on = job.status === 'active'
+            const busy = busyId === job.id
+            const camp = campaigns.find((c) => c.id === job.campaignId)
+            return (
+              <li key={job.id} className={`flex gap-3 rounded-xl border border-border bg-card p-4 ${on ? '' : 'opacity-75'}`}>
+                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${on ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}><Icon aria-hidden="true" className="h-4 w-4" /></div>
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-sm font-semibold">{r.label}</h2>
+                    <StatusPill tone={on ? 'good' : 'neutral'}>{on ? 'On' : 'Paused'}</StatusPill>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{r.description}</p>
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs sm:grid-cols-3">
+                    <div><dt className="text-muted-foreground">Runs</dt><dd className="font-medium">{describeCron(job.cronExpression)}</dd></div>
+                    <div><dt className="text-muted-foreground">Next</dt><dd className="font-medium tabular">{on ? fmt(job.nextRunAt) : '—'}</dd></div>
+                    <div><dt className="text-muted-foreground">Last</dt><dd className="font-medium tabular">{fmt(job.lastRunAt)}</dd></div>
+                  </dl>
+                  {camp && <p className="text-xs text-muted-foreground">Scoped to {camp.name}</p>}
                 </div>
-              )}
-              <div className="space-y-2">
-                <Label>Schedule</Label>
-                <Select value={form.cronExpression} onValueChange={(v) => { if (v) setForm({ ...form, cronExpression: v }) }}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {cronPresets.map((p) => (
-                      <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">Cron: {form.cronExpression}</p>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowCreate(false)} className="glass card-3d">Cancel</Button>
-              <Button onClick={handleCreate} disabled={creating} className="gradient-bg animate-gradient shadow-lg card-3d">
-                {creating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-                Create Schedule
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
+                <div className="flex shrink-0 flex-col gap-1">
+                  <Button size="sm" variant="ghost" onClick={() => toggle(job)} disabled={busy} aria-label={on ? 'Pause' : 'Resume'} title={on ? 'Pause' : 'Resume'}>
+                    {busy ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : on ? <Pause aria-hidden="true" className="h-4 w-4" /> : <Play aria-hidden="true" className="h-4 w-4" />}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setDeleteFor(job)} disabled={busy} aria-label="Delete" title="Delete" className="text-muted-foreground hover:text-[var(--status-critical-ink)]"><Trash2 aria-hidden="true" className="h-4 w-4" /></Button>
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
 
-      <Card className="glass card-3d">
-        <CardHeader>
-          <CardTitle>Automated Jobs</CardTitle>
-          <CardDescription>Manage your scheduled automation tasks</CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Job Type</TableHead>
-                <TableHead>Schedule</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Last Run</TableHead>
-                <TableHead>Next Run</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {jobs.map((job) => (
-                <TableRow key={job.id} className="transition-colors hover:bg-accent/30">
-                  <TableCell>
-                    <div>
-                      <p className="text-sm font-medium">{jobTypes[job.type]?.label || job.type}</p>
-                      <p className="text-xs text-muted-foreground">{job.cronExpression}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1 text-sm">
-                      <Clock className="h-3 w-3 text-muted-foreground" />
-                      {cronPresets.find(p => p.value === job.cronExpression)?.label || job.cronExpression}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={job.status === 'active' ? 'default' : 'secondary'}>
-                      {job.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {job.lastRunAt ? new Date(job.lastRunAt).toLocaleString() : 'Never'}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {job.nextRunAt ? new Date(job.nextRunAt).toLocaleString() : '-'}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      <Switch
-                        checked={job.status === 'active'}
-                        onCheckedChange={() => toggleJob(job.id, job.status)}
-                      />
-                      <Button size="sm" variant="ghost" onClick={() => deleteJob(job.id)} className="h-8 w-8 p-0">
-                        <Trash2 className="h-3.5 w-3.5 text-red-500" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          {jobs.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-12 gap-3">
-              <CalendarClock className="h-8 w-8 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">No scheduled jobs yet</p>
-              <Button onClick={() => setShowCreate(true)} className="gradient-bg animate-gradient shadow-lg card-3d"><Plus className="mr-2 h-4 w-4" />Create Schedule</Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card className="glass card-3d">
-        <CardHeader>
-          <CardTitle>How Automation Works</CardTitle>
-          <CardDescription>Your AI brain automates these tasks on schedule</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {Object.entries(jobTypes).map(([key, info]) => (
-            <div key={key} className="flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-accent/30">
-              <div className="mt-0.5">
-                {key === 'morning_optimization' && <CalendarClock className="h-4 w-4 text-blue-500" />}
-                {key === 'budget_pacing' && <Clock className="h-4 w-4 text-green-500" />}
-                {key === 'anomaly_detection' && <XCircle className="h-4 w-4 text-orange-500" />}
-                {key === 'weekly_report' && <CheckCircle2 className="h-4 w-4 text-purple-500" />}
-                {key === 'reflection' && <RefreshCw className="h-4 w-4 text-cyan-500" />}
-                {key === 'custom' && <CalendarClock className="h-4 w-4 text-red-500" />}
-              </div>
-              <div>
-                <p className="text-sm font-medium">{info.label}</p>
-                <p className="text-xs text-muted-foreground">{info.description}</p>
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+      <CreateDialog open={showCreate} onOpenChange={setShowCreate} campaigns={campaigns} existing={jobs.map((j) => j.type)} onDone={() => setReloadKey((k) => k + 1)} />
+      <ConfirmDialog open={Boolean(deleteFor)} onOpenChange={(o) => !o && setDeleteFor(null)} title="Remove this automation?" description="It stops running. Nothing already done is undone." confirmLabel="Remove" destructive onConfirm={() => (deleteFor ? remove(deleteFor) : undefined)} />
     </div>
+  )
+}
+
+function CreateDialog({ open, onOpenChange, campaigns, existing, onDone }: { open: boolean; onOpenChange: (o: boolean) => void; campaigns: Campaign[]; existing: string[]; onDone: () => void }) {
+  const [type, setType] = useState('morning_optimization')
+  const [cron, setCron] = useState(ROUTINES.morning_optimization.suggested)
+  const [customCron, setCustomCron] = useState('')
+  const [campaignId, setCampaignId] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const custom = !PRESETS.some((p) => p.value === cron)
+
+  async function submit() {
+    const expr = custom ? customCron.trim() : cron
+    if (!/^(\S+\s+){4}\S+$/.test(expr)) { setError('A cron expression has five parts, e.g. 30 3 * * 1'); return }
+    setError(null)
+    setBusy(true)
+    try {
+      const res = await fetch('/api/schedule', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type, cronExpression: expr, campaignId: campaignId || null }) })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || 'Could not create')
+      toast.success(`${ROUTINES[type].label} scheduled`)
+      onOpenChange(false); onDone()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not create')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Add an automation</DialogTitle>
+          <DialogDescription>Pick a routine and how often it runs.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-5">
+          <div className="grid grid-cols-1 gap-2" role="radiogroup" aria-label="Routine">
+            {Object.entries(ROUTINES).map(([value, r]) => {
+              const Icon = r.icon
+              const on = type === value
+              const dup = existing.includes(value)
+              return (
+                <button key={value} type="button" role="radio" aria-checked={on} onClick={() => { setType(value); setCron(r.suggested) }}
+                  className={`flex items-start gap-3 rounded-lg border p-3 text-left transition-colors ${on ? 'border-primary bg-primary/5' : 'border-border hover:border-foreground/30'}`}>
+                  <Icon aria-hidden="true" className={`mt-0.5 h-4 w-4 shrink-0 ${on ? 'text-primary' : 'text-muted-foreground'}`} />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">{r.label}{dup && <span className="ml-2 text-xs font-normal text-muted-foreground">already added</span>}</p>
+                    <p className="text-xs leading-snug text-muted-foreground">{r.description}</p>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+
+          <Field label="How often">
+            {() => <ChipGroup size="sm" value={custom ? 'custom' : cron} onChange={(v) => { if (!v) return; if (v === 'custom') { setCron(''); setCustomCron('30 3 * * *') } else setCron(v as string) }} options={[...PRESETS, { value: 'custom', label: 'Custom cron' }]} />}
+          </Field>
+          {custom && <TextField label="Cron expression" value={customCron} onChange={setCustomCron} error={error} hint="minute hour day month weekday, in UTC. 30 3 * * 1 is Monday 09:00 IST." />}
+
+          {campaigns.length > 0 && (
+            <Field label="Only for one campaign" hint="Optional. Leave blank to cover the whole account.">
+              {({ id }) => (
+                <Select value={campaignId} onValueChange={(v) => setCampaignId(v ?? '')}>
+                  <SelectTrigger id={id} className="h-10 w-full"><SelectValue placeholder="Whole account" /></SelectTrigger>
+                  <SelectContent>{campaigns.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                </Select>
+              )}
+            </Field>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>Cancel</Button>
+          <Button onClick={submit} disabled={busy}>{busy && <Loader2 aria-hidden="true" className="mr-1.5 h-4 w-4 animate-spin" />} Schedule</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

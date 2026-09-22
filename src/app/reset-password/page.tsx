@@ -95,13 +95,13 @@ export default function ResetPasswordPage() {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-sm"
       >
-        <div className="glass rounded-2xl p-8 space-y-6 card-3d">
+        <div className="rounded-2xl border border-border bg-card p-6 space-y-6 shadow-sm">
           <div className="flex flex-col items-center gap-3 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl gradient-bg animate-gradient shadow-xl glow-md">
+            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary text-primary-foreground">
               <Brain className="h-7 w-7 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold gradient-text">Set new password</h1>
+              <h1 className="text-xl font-semibold tracking-tight">Set new password</h1>
               <p className="text-sm text-muted-foreground mt-1">Enter your new password below</p>
             </div>
           </div>
@@ -119,7 +119,7 @@ export default function ResetPasswordPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="pl-9 glass border-border/50"
+                  className="pl-9 h-11"
                   disabled={loading}
                 />
               </div>
@@ -136,7 +136,7 @@ export default function ResetPasswordPage() {
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
                   placeholder="••••••••"
-                  className="pl-9 glass border-border/50"
+                  className="pl-9 h-11"
                   disabled={loading}
                 />
               </div>
@@ -144,7 +144,7 @@ export default function ResetPasswordPage() {
             <Button
               type="submit"
               disabled={loading}
-              className="w-full gradient-bg animate-gradient shadow-lg card-3d"
+              className="w-full h-11"
             >
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Update password

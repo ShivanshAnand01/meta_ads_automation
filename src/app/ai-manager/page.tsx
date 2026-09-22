@@ -283,7 +283,7 @@ function ApprovalCard({ approval, onDecision, busy }: { approval: { id: string; 
       </div>
       <p className="text-xs text-muted-foreground">{approval.summary}</p>
       <div className="flex gap-2">
-        <Button size="sm" className="h-7 text-xs gradient-bg animate-gradient" disabled={busy} onClick={() => onDecision(approval.id, 'approve')}>
+        <Button size="sm" className="h-7 text-xs" disabled={busy} onClick={() => onDecision(approval.id, 'approve')}>
           Approve & Run
         </Button>
         <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy} onClick={() => onDecision(approval.id, 'reject')}>
@@ -703,32 +703,32 @@ export default function AIManagerPage() {
   }
 
   return (
-      <div className="flex h-[calc(100vh-120px)] gap-4">
+      <div className="flex h-[calc(100dvh-7.5rem)] gap-4 md:h-[calc(100dvh-8rem)]">
       {/* Main chat area */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-1 pb-3">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl gradient-bg animate-gradient shadow-lg">
-              <Brain className="h-5 w-5 text-white" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
+              <Brain className="h-5 w-5 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight">AI Manager</h1>
+              <h1 className="text-xl font-semibold tracking-tight">AI Manager</h1>
               <p className="text-xs text-muted-foreground">
                 {activeConversation?.title || 'Start a new conversation'}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setShowKBDialog(true)} className="glass gap-1.5">
+            <Button variant="outline" size="sm" onClick={() => setShowKBDialog(true)} className="gap-1.5">
               <BookOpen className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Knowledge Base</span>
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setShowBrainDialog(true)} className="glass gap-1.5">
+            <Button variant="outline" size="sm" onClick={() => setShowBrainDialog(true)} className="gap-1.5">
               <Cpu className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">{brain ? brainShortLabel(brain) : 'Configure'}</span>
             </Button>
-            <Button variant="outline" size="sm" onClick={newConversation} className="glass gap-1.5">
+            <Button variant="outline" size="sm" onClick={newConversation} className="gap-1.5">
               <Plus className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">New</span>
             </Button>
@@ -736,7 +736,7 @@ export default function AIManagerPage() {
         </div>
 
         {/* Messages */}
-        <Card className="glass card-3d relative flex flex-1 flex-col overflow-hidden">
+        <Card className="relative flex flex-1 flex-col overflow-hidden py-0">
           <div className="relative flex-1 overflow-hidden">
             <div ref={scrollContainerRef} onScroll={handleScroll} className="h-full overflow-y-auto scrollbar-thin">
             <div className="space-y-6 p-4 pb-8">
@@ -746,12 +746,12 @@ export default function AIManagerPage() {
                     initial={{ scale: 0.8, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                     transition={{ duration: 0.4 }}
-                    className="flex h-20 w-20 items-center justify-center rounded-3xl gradient-bg animate-gradient shadow-2xl glow-md"
+                    className="flex h-20 w-20 items-center justify-center rounded-2xl bg-primary text-primary-foreground"
                   >
-                    <Sparkles className="h-9 w-9 text-white" />
+                    <Sparkles className="h-9 w-9" />
                   </motion.div>
                   <div className="text-center max-w-md">
-                    <h2 className="text-2xl font-bold gradient-text">AI Ads Manager</h2>
+                    <h2 className="text-2xl font-semibold tracking-tight">AI Ads Manager</h2>
                     <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
                       Ask anything about your Meta Ads — create campaigns, generate Marathi creatives, review performance, or get strategy advice.
                     </p>
@@ -766,8 +766,8 @@ export default function AIManagerPage() {
                         onClick={() => { setInput(s.text) }}
                         className="group flex items-start gap-3 rounded-2xl border border-border/40 bg-background/40 p-4 text-left text-sm transition-all hover:bg-primary/5 hover:border-primary/30 hover:shadow-md hover:-translate-y-0.5"
                       >
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl gradient-bg shadow-sm">
-                          <s.icon className="h-4 w-4 text-white" />
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                          <s.icon className="h-4 w-4" />
                         </div>
                         <span className="pt-1 text-foreground/90 group-hover:text-foreground transition-colors">{s.text}</span>
                       </motion.button>
@@ -785,15 +785,15 @@ export default function AIManagerPage() {
                       className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                     >
                       {msg.role === 'assistant' && (
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl gradient-bg shadow-md mt-1">
-                          <Brain className="h-4 w-4 text-white" />
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary mt-1">
+                          <Brain className="h-4 w-4" />
                         </div>
                       )}
 
                       <div className={`max-w-[88%] sm:max-w-[80%] ${msg.role === 'user' ? 'order-first' : ''}`}>
                         {msg.role === 'user' ? (
                           <div className="flex flex-col items-end gap-2">
-                            <div className="rounded-2xl rounded-tr-sm gradient-bg animate-gradient px-4 py-2.5 text-sm text-white shadow-md">
+                            <div className="rounded-2xl rounded-tr-sm bg-primary px-4 py-2.5 text-sm text-primary-foreground">
                               <p className="whitespace-pre-wrap leading-relaxed">{displayUserContent(msg.content)}</p>
                             </div>
                             {msg.attachments && msg.attachments.length > 0 && (
@@ -822,7 +822,7 @@ export default function AIManagerPage() {
 
                             {/* Text content */}
                             {cleanAssistantContent(msg.content) && (
-                              <div className="rounded-2xl rounded-tl-sm glass card-3d px-4 py-3 shadow-sm">
+                              <div className="rounded-2xl rounded-tl-sm border border-border bg-card px-4 py-3">
                                 <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:my-2 prose-p:my-1.5 prose-ul:my-1.5 prose-pre:my-2 prose-code:text-xs prose-code:before:content-none prose-code:after:content-none">
                                   <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
                                     {cleanAssistantContent(msg.content)}
@@ -874,7 +874,7 @@ export default function AIManagerPage() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 10 }}
                   onClick={() => scrollToBottom(true)}
-                  className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex h-9 w-9 items-center justify-center rounded-full glass border border-border/50 shadow-lg hover:scale-110 transition-transform"
+                  className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card shadow-lg hover:scale-110 transition-transform"
                 >
                   <ChevronDown className="h-4 w-4 text-primary" />
                 </motion.button>
@@ -914,8 +914,8 @@ export default function AIManagerPage() {
           )}
 
           {/* Input bar */}
-          <div className="border-t border-border/40 p-3 bg-background/30">
-            <div className="flex items-end gap-2 rounded-2xl border border-border/50 bg-muted/20 p-2 shadow-sm focus-within:ring-1 focus-within:ring-primary/20 focus-within:border-primary/30 transition-all">
+          <div className="border-t border-border p-3">
+            <div className="flex items-end gap-2 rounded-xl border border-input bg-card p-2 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -959,7 +959,7 @@ export default function AIManagerPage() {
                 <Button
                   onClick={sendMessage}
                   disabled={(!input.trim() && pendingAttachments.length === 0) || !brain?.configured}
-                  className="shrink-0 h-9 w-9 rounded-xl gradient-bg animate-gradient shadow-md p-0"
+                  className="shrink-0 h-9 w-9 rounded-lg p-0"
                 >
                   <Send className="h-4 w-4" />
                 </Button>
@@ -973,7 +973,7 @@ export default function AIManagerPage() {
       <div className="hidden w-80 shrink-0 space-y-3 overflow-y-auto lg:block pr-1">
         {/* Approvals (guardrail queue) */}
         {approvals.length > 0 && (
-          <Card className="glass card-3d border-amber-500/40 shadow-sm">
+          <Card className="border-[var(--status-warning)]/40 shadow-none">
             <CardHeader className="pb-2">
               <div className="flex items-center gap-2">
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/15">
@@ -992,7 +992,7 @@ export default function AIManagerPage() {
         )}
 
         {/* Notes */}
-        <Card className="glass card-3d shadow-sm">
+        <Card className="shadow-none">
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/15">
@@ -1016,7 +1016,7 @@ export default function AIManagerPage() {
         </Card>
 
         {/* History toggle + list */}
-        <Card className="glass card-3d shadow-sm">
+        <Card className="shadow-none">
           <CardHeader className="pb-2">
             <button
               onClick={() => setShowHistory(!showHistory)}
@@ -1059,7 +1059,7 @@ export default function AIManagerPage() {
         </Card>
 
         {/* Tools */}
-        <Card className="glass card-3d shadow-sm">
+        <Card className="shadow-none">
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
               <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/15">
@@ -1103,8 +1103,8 @@ export default function AIManagerPage() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg gradient-bg shadow-md">
-                <HelpCircle className="h-4 w-4 text-white" />
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                <HelpCircle className="h-4 w-4" />
               </div>
               <DialogTitle>AI has a question</DialogTitle>
             </div>
@@ -1135,7 +1135,7 @@ export default function AIManagerPage() {
                 size="sm"
                 onClick={submitQuestionAnswer}
                 disabled={!questionAnswer.trim() || submittingAnswer}
-                className="gradient-bg animate-gradient"
+                className=""
               >
                 {submittingAnswer ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </Button>
@@ -1198,7 +1198,7 @@ function InlineImages({ toolCalls }: { toolCalls: ToolCallInfo[] }) {
   return (
     <div className="space-y-3">
       {images.map((img, i) => (
-        <div key={i} className="rounded-2xl glass card-3d overflow-hidden">
+        <div key={i} className="rounded-xl border border-border bg-card overflow-hidden">
           <Image
             src={img.url}
             alt="AI generated ad creative"
@@ -1418,7 +1418,7 @@ function BrainDialog({ open, brain, onSave, onOpenChange }: {
           {provider && (
             <Button
               onClick={() => onSave({ ...(brain as BrainConfig), model, configured: true })}
-              className="gradient-bg animate-gradient"
+              className=""
             >
               Save Model
             </Button>

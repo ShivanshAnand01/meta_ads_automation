@@ -31,6 +31,10 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "**.facebook.com",
       },
+      {
+        protocol: "https",
+        hostname: "image.pollinations.ai",
+      },
     ],
   },
 

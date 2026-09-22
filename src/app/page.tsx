@@ -168,21 +168,21 @@ export default function DashboardPage() {
           />
           <SetupStep
             n={2}
-            done={Boolean(data?.aiConfigured)}
-            icon={Sparkles}
-            title="Set up the AI brain"
-            description="Pick a provider and add an API key. This writes the Marathi ad copy and images."
-            href="/settings"
-            cta="Configure"
+            done={false}
+            icon={Wallet}
+            title="Tell us about your business"
+            description="Language, market, audience and landing page. Every ad is written from this."
+            href="/business"
+            cta="Set up"
           />
           <SetupStep
             n={3}
-            done={false}
-            icon={Wallet}
-            title="Set your budget guardrails"
-            description="A daily and monthly cap. The platform refuses to spend past them."
+            done={Boolean(data?.aiConfigured)}
+            icon={Sparkles}
+            title="Set up the AI brain and budget caps"
+            description="Pick an AI provider, then set the daily and monthly caps the platform enforces."
             href="/settings"
-            cta="Set limits"
+            cta="Configure"
           />
         </ol>
         {error && <ErrorBanner message={error} onRetry={reload} />}

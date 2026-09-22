@@ -11,7 +11,9 @@ import { getScopedSupabase } from '@/lib/db/supabase-db'
  * has to be equally right for all of them.
  */
 
-export type LanguageMode = 'single' | 'mixed'
+export type { LanguageMode } from './profile-constants'
+export { LANGUAGES, languageLabel, currencySymbol, formatMoney } from './profile-constants'
+import { languageLabel, currencySymbol, type LanguageMode } from './profile-constants'
 
 export interface BusinessProfile {
   userId: string
@@ -64,51 +66,6 @@ export const DEFAULT_PROFILE: Omit<BusinessProfile, 'userId'> = {
   landingUrl: null,
   culturalNotes: null,
   onboardingComplete: false,
-}
-
-/**
- * Languages the platform knows how to describe to the model. The label is
- * what actually steers the output: "Marathi (Devanagari script)" produces
- * Devanagari, "Marathi" alone sometimes produces romanised Marathi.
- */
-export const LANGUAGES: Record<string, { label: string; script: string }> = {
-  en: { label: 'English', script: 'Latin' },
-  hi: { label: 'Hindi (Devanagari script)', script: 'Devanagari' },
-  mr: { label: 'Marathi (Devanagari script)', script: 'Devanagari' },
-  gu: { label: 'Gujarati (Gujarati script)', script: 'Gujarati' },
-  ta: { label: 'Tamil (Tamil script)', script: 'Tamil' },
-  te: { label: 'Telugu (Telugu script)', script: 'Telugu' },
-  kn: { label: 'Kannada (Kannada script)', script: 'Kannada' },
-  ml: { label: 'Malayalam (Malayalam script)', script: 'Malayalam' },
-  bn: { label: 'Bengali (Bengali script)', script: 'Bengali' },
-  pa: { label: 'Punjabi (Gurmukhi script)', script: 'Gurmukhi' },
-  ur: { label: 'Urdu (Nastaliq script)', script: 'Arabic' },
-  or: { label: 'Odia (Odia script)', script: 'Odia' },
-  as: { label: 'Assamese (Bengali-Assamese script)', script: 'Bengali' },
-  es: { label: 'Spanish', script: 'Latin' },
-  fr: { label: 'French', script: 'Latin' },
-  de: { label: 'German', script: 'Latin' },
-  pt: { label: 'Portuguese', script: 'Latin' },
-  ar: { label: 'Arabic (Arabic script)', script: 'Arabic' },
-  id: { label: 'Indonesian', script: 'Latin' },
-}
-
-export function languageLabel(code: string): string {
-  return LANGUAGES[code]?.label ?? code
-}
-
-const CURRENCY_SYMBOLS: Record<string, string> = {
-  INR: '₹', USD: '$', EUR: '€', GBP: '£', AED: 'AED ', SGD: 'S$', AUD: 'A$', CAD: 'C$', JPY: '¥',
-}
-
-export function currencySymbol(code: string): string {
-  return CURRENCY_SYMBOLS[code] ?? `${code} `
-}
-
-export function formatMoney(amount: number, currency: string): string {
-  const symbol = currencySymbol(currency)
-  const locale = currency === 'INR' ? 'en-IN' : 'en-US'
-  return `${symbol}${Math.round(amount).toLocaleString(locale)}`
 }
 
 // ── Persistence ───────────────────────────────────────────────────────────

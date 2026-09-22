@@ -19,6 +19,7 @@ import {
   User,
   Moon,
   Sun,
+  Building2,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { createClient } from '@/lib/supabase/client'
@@ -62,9 +63,10 @@ const NAV_GROUPS: Array<{
   {
     label: 'Setup',
     items: [
+      { href: '/business', label: 'Business Profile', icon: Building2 },
       { href: '/connect', label: 'Meta Connection', icon: Link2 },
-      { href: '/profile', label: 'Profile', icon: User },
       { href: '/settings', label: 'Settings', icon: Settings },
+      { href: '/profile', label: 'Account', icon: User },
     ],
   },
 ]

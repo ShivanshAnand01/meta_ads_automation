@@ -1,309 +1,232 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
+import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { toast } from 'sonner'
-import { motion } from 'framer-motion'
-import { Brain, Save, Loader2, CheckCircle2, Cpu, Key, Server, Sparkles } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { PageHeader, Section, StatusPill, formatCurrency } from '@/components/ui/metric'
+import { TextField, TextAreaField, ChipGroup, Field, SwitchRow } from '@/components/ui/field'
+import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { Loader2, Save, Eye, EyeOff, Sparkles, Cpu, Key, Server, ShieldCheck } from 'lucide-react'
 
-const providerInfo = {
-  anthropic: {
-    name: 'Claude (Anthropic)',
-    description: 'Best for Marathi ad creative generation. Claude 3.5 Sonnet and Opus available. Excellent reasoning.',
-    icon: Sparkles,
-    needsApiKey: true,
-    needsBaseUrl: false,
-    defaultBaseUrl: '',
-    defaultModel: 'claude-sonnet-5',
-  },
-  ollama: {
-    name: 'Ollama (Local, Free)',
-    description: 'Run AI models locally on your machine. No API key needed. Great for getting started.',
-    icon: Cpu,
-    needsApiKey: false,
-    needsBaseUrl: true,
-    defaultBaseUrl: 'http://localhost:11434',
-    defaultModel: 'llama3',
-  },
-  openai: {
-    name: 'OpenAI GPT',
-    description: 'GPT-4o and GPT-4o Mini available. Good multilingual support including Marathi.',
-    icon: Key,
-    needsApiKey: true,
-    needsBaseUrl: false,
-    defaultBaseUrl: '',
-    defaultModel: 'gpt-4.1-mini',
-  },
-  groq: {
-    name: 'Groq (Llama/Mixtral)',
-    description: 'Fast inference with free tier. Good Devanagari script support.',
-    icon: Server,
-    needsApiKey: true,
-    needsBaseUrl: false,
-    defaultBaseUrl: '',
-    defaultModel: 'llama-3.3-70b-versatile',
-  },
-}
+/**
+ * Settings: the AI brain and the money guardrails.
+ *
+ * Two things that are both "settings" but matter differently. The brain is
+ * set once. The caps are the thing the owner will come back to — they are
+ * enforced in code (budget-guard.ts), so the page says so, and shows the
+ * same numbers the server checks.
+ */
+
+const PROVIDERS = [
+  { value: 'anthropic', name: 'Claude (Anthropic)', icon: Sparkles, blurb: 'Strongest at Indian-language copy and reasoning. Recommended.', needsKey: true, needsBase: false, defaultModel: 'claude-sonnet-5', keyUrl: 'https://console.anthropic.com/settings/keys' },
+  { value: 'openai', name: 'OpenAI', icon: Key, blurb: 'Good multilingual support. Also unlocks image generation.', needsKey: true, needsBase: false, defaultModel: 'gpt-4.1-mini', keyUrl: 'https://platform.openai.com/api-keys' },
+  { value: 'groq', name: 'Groq', icon: Server, blurb: 'Very fast, free tier. Weaker Devanagari.', needsKey: true, needsBase: false, defaultModel: 'llama-3.3-70b-versatile', keyUrl: 'https://console.groq.com/keys' },
+  { value: 'ollama', name: 'Ollama (local)', icon: Cpu, blurb: 'Runs on your own machine. No key. Not reachable from the hosted app.', needsKey: false, needsBase: true, defaultModel: 'llama3', keyUrl: 'https://ollama.com' },
+] as const
+
+interface AiSettings { configured: boolean; provider?: string; model?: string; baseUrl?: string | null; hasApiKey?: boolean; hasEmbeddingKey?: boolean }
+interface Strategy { targetRoas: number; targetCpa: number | null; monthlyBudget: number | null; dailyBudgetCap: number | null; focus: string | null; autoOptimize: boolean }
 
 export default function SettingsPage() {
+  const [ai, setAi] = useState<AiSettings | null>(null)
+  const [strategy, setStrategy] = useState<Strategy | null>(null)
+  const [currency, setCurrency] = useState('INR')
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [provider, setProvider] = useState('ollama')
-  const [baseUrl, setBaseUrl] = useState('http://localhost:11434')
-  // API key is NEVER pre-filled with the masked value. The user types a new key
-  // or leaves it blank to keep the existing one. `hasApiKey` tells us if one is
-  // already stored so we can show a "Configured" badge.
-  const [apiKey, setApiKey] = useState('')
-  const [embeddingKey, setEmbeddingKey] = useState('')
-  const [hasApiKey, setHasApiKey] = useState(false)
-  const [hasEmbeddingKey, setHasEmbeddingKey] = useState(false)
-  const [configured, setConfigured] = useState(false)
 
   useEffect(() => {
-    async function fetchSettings() {
-      try {
-        const res = await fetch('/api/settings/ai')
-        const json = await res.json()
-        if (json.provider) {
-          setProvider(json.provider)
-          setBaseUrl(json.baseUrl || providerInfo[json.provider as keyof typeof providerInfo].defaultBaseUrl)
-          setHasApiKey(Boolean(json.hasApiKey))
-          setHasEmbeddingKey(Boolean(json.hasEmbeddingKey))
-          setConfigured(true)
-        }
-      } catch {
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchSettings()
+    Promise.all([
+      fetch('/api/settings/ai').then((r) => r.json()),
+      fetch('/api/strategy').then((r) => r.json()),
+      fetch('/api/business-profile').then((r) => r.json()).catch(() => null),
+    ]).then(([a, s, p]) => {
+      setAi(a); setStrategy(s.strategy); if (p?.profile?.currency) setCurrency(p.profile.currency)
+    }).catch(() => toast.error('Could not load settings')).finally(() => setLoading(false))
   }, [])
 
-  function handleProviderChange(newProvider: string) {
-    const info = providerInfo[newProvider as keyof typeof providerInfo]
-    setProvider(newProvider)
-    setBaseUrl(info.defaultBaseUrl)
-  }
-
-  async function handleSave() {
-    setSaving(true)
-    try {
-      // Only include apiKey/embeddingKey in the body if the user typed a new
-      // value. An empty string means "keep existing" — the server treats blank
-      // as "don't change", but we also omit it entirely for clarity.
-      const payload: Record<string, unknown> = {
-        provider,
-        baseUrl,
-        // model is managed in the AI Manager — send the provider default so the
-        // DB always holds a valid model when the provider changes.
-        model: providerInfo[provider as keyof typeof providerInfo].defaultModel,
-      }
-      if (apiKey.trim()) payload.apiKey = apiKey.trim()
-      if (embeddingKey.trim()) payload.embeddingKey = embeddingKey.trim()
-
-      const res = await fetch('/api/settings/ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      if (res.ok) {
-        const json = await res.json()
-        toast.success('AI settings saved!')
-        setConfigured(true)
-        setHasApiKey(Boolean(json.hasApiKey))
-        setHasEmbeddingKey(Boolean(json.hasEmbeddingKey))
-        setApiKey('')
-        setEmbeddingKey('')
-      } else {
-        const json = await res.json()
-        toast.error(json.error || 'Failed to save settings')
-      }
-    } catch {
-      toast.error('Failed to save settings')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 w-32 rounded bg-muted" />
-          <div className="h-96 rounded bg-muted" />
-        </div>
-      </div>
-    )
-  }
-
-  const currentProvider = providerInfo[provider as keyof typeof providerInfo]
-  const CurrentIcon = currentProvider.icon
+  if (loading || !ai || !strategy) return <PageSkeleton rows={2} />
 
   return (
     <div className="space-y-6">
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-      >
-        <h1 className="text-3xl font-bold tracking-tight gradient-text">Settings</h1>
-        <p className="text-muted-foreground">Configure your AI provider and API key. Choose your model in the AI Manager.</p>
-      </motion.div>
+      <PageHeader
+        title="Settings"
+        description="The AI that writes and the limits it cannot cross."
+        meta={
+          <>
+            {ai.configured ? <StatusPill tone="good">AI: {ai.provider} · {ai.model}</StatusPill> : <StatusPill tone="warning">AI not configured</StatusPill>}
+            {strategy.dailyBudgetCap ? <StatusPill tone="good" icon={ShieldCheck}>Daily cap {formatCurrency(strategy.dailyBudgetCap, currency)}</StatusPill> : <StatusPill tone="critical">No daily cap</StatusPill>}
+          </>
+        }
+      />
 
-      <Card className="glass card-3d">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl gradient-bg shadow-md">
-              <Brain className="h-4 w-4 text-white" />
-            </div>
-            <div>
-              <CardTitle>AI Brain Configuration</CardTitle>
-              <CardDescription>Set your AI provider and API key here. Pick the model in the AI Manager.</CardDescription>
-            </div>
-          </div>
-          {configured && (
-            <Badge variant="default" className="w-fit">
-              <CheckCircle2 className="mr-1 h-3 w-3" />
-              Configured
-            </Badge>
-          )}
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Provider selection */}
-          <div className="space-y-3">
-            <Label>AI Provider</Label>
-            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-              {Object.entries(providerInfo).map(([key, info]) => {
-                const Icon = info.icon
-                return (
-                  <button
-                    key={key}
-                    onClick={() => handleProviderChange(key)}
-                    className={`flex flex-col items-start gap-2 rounded-lg border p-4 text-left transition-colors ${
-                      provider === key
-                        ? 'border-primary bg-primary/5'
-                        : 'hover:bg-muted'
-                    }`}
-                  >
-                    <Icon className="h-5 w-5" />
-                    <div>
-                      <p className="text-sm font-medium">{info.name}</p>
-                      <p className="text-xs text-muted-foreground mt-1">{info.description}</p>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
+      <Tabs defaultValue={ai.configured ? 'caps' : 'brain'}>
+        <TabsList>
+          <TabsTrigger value="brain">AI brain</TabsTrigger>
+          <TabsTrigger value="caps">Budget caps and targets</TabsTrigger>
+        </TabsList>
+        <TabsContent value="brain" className="pt-4"><BrainForm initial={ai} onSaved={setAi} /></TabsContent>
+        <TabsContent value="caps" className="pt-4"><StrategyForm initial={strategy} currency={currency} onSaved={setStrategy} /></TabsContent>
+      </Tabs>
 
-          <Separator />
+      <p className="text-xs text-muted-foreground">
+        Language, market and audience live in the <Link href="/business" className="underline underline-offset-2">Business Profile</Link>. Your Meta app and token live in <Link href="/connect" className="underline underline-offset-2">Meta Connection</Link>.
+      </p>
+    </div>
+  )
+}
 
-          {/* API key + base URL */}
-          <div className="grid gap-4 md:grid-cols-2">
-            {currentProvider.needsApiKey && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label>API Key</Label>
-                  {hasApiKey && (
-                    <Badge variant="secondary" className="gap-1 text-[10px]">
-                      <CheckCircle2 className="h-3 w-3 text-emerald-500" />
-                      Key saved
-                    </Badge>
-                  )}
+function BrainForm({ initial, onSaved }: { initial: AiSettings; onSaved: (a: AiSettings) => void }) {
+  const [form, setForm] = useState({ provider: initial.provider || 'anthropic', model: initial.model || '', baseUrl: initial.baseUrl || '', apiKey: '', embeddingKey: '' })
+  const [show, setShow] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const p = PROVIDERS.find((x) => x.value === form.provider) ?? PROVIDERS[0]
+
+  function pick(provider: string) {
+    const np = PROVIDERS.find((x) => x.value === provider)!
+    setForm((f) => ({ ...f, provider, model: f.provider === provider ? f.model : np.defaultModel, baseUrl: np.needsBase ? f.baseUrl || 'http://localhost:11434' : '' }))
+  }
+
+  async function save() {
+    const errs: Record<string, string> = {}
+    if (p.needsKey && !form.apiKey && !(initial.hasApiKey && initial.provider === form.provider)) errs.apiKey = 'An API key is required for this provider.'
+    if (!form.model.trim()) errs.model = 'Enter a model name.'
+    setErrors(errs)
+    if (Object.keys(errs).length) return
+    setBusy(true)
+    try {
+      const res = await fetch('/api/settings/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ provider: form.provider, model: form.model.trim(), baseUrl: form.baseUrl || undefined, apiKey: form.apiKey || undefined, embeddingKey: form.embeddingKey || undefined }) })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || 'Save failed')
+      onSaved({ configured: true, provider: j.provider, model: j.model, baseUrl: j.baseUrl, hasApiKey: j.hasApiKey, hasEmbeddingKey: j.hasEmbeddingKey })
+      setForm((f) => ({ ...f, apiKey: '', embeddingKey: '' }))
+      toast.success('AI brain saved')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Save failed')
+    } finally { setBusy(false) }
+  }
+
+  const keySaved = initial.hasApiKey && initial.provider === form.provider
+
+  return (
+    <Section title="AI provider" description="Writes the copy, plans campaigns and answers in the AI Manager.">
+      <div className="space-y-5">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Provider">
+          {PROVIDERS.map((opt) => {
+            const on = form.provider === opt.value
+            const Icon = opt.icon
+            return (
+              <button key={opt.value} type="button" role="radio" aria-checked={on} onClick={() => pick(opt.value)}
+                className={`flex items-start gap-3 rounded-lg border p-3 text-left transition-colors ${on ? 'border-primary bg-primary/5' : 'border-border hover:border-foreground/30'}`}>
+                <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${on ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'}`}><Icon aria-hidden="true" className="h-4 w-4" /></div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{opt.name}</p>
+                  <p className="text-xs leading-snug text-muted-foreground">{opt.blurb}</p>
                 </div>
-                <Input
-                  type="password"
-                  placeholder={hasApiKey ? 'Enter a new key to replace the saved one' : 'Enter your API key'}
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                />
-                {hasApiKey ? (
-                  <p className="text-xs text-muted-foreground">
-                    A key is already saved. Leave blank to keep it, or type a new one to replace it.
-                  </p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    {provider === 'anthropic' && <>Get your key from <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">Anthropic Console</a></>}
-                    {provider === 'openai' && <>Get your key from <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">OpenAI Dashboard</a></>}
-                    {provider === 'groq' && <>Get your key from <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">Groq Console</a></>}
-                  </p>
-                )}
-              </div>
-            )}
+              </button>
+            )
+          })}
+        </div>
 
-            {currentProvider.needsBaseUrl && (
-              <div className="space-y-2">
-                <Label>Ollama Base URL</Label>
-                <Input
-                  value={baseUrl}
-                  onChange={(e) => setBaseUrl(e.target.value)}
-                  placeholder="http://localhost:11434"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Install Ollama: <a href="https://ollama.com" target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">ollama.com</a>
-                  {' '}and run <code className="rounded bg-muted px-1">ollama pull llama3</code>
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* Embedding key (optional, for RAG) */}
-          {provider !== 'openai' && provider !== 'ollama' && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Embedding API Key (OpenAI) — optional</Label>
-                {hasEmbeddingKey && (
-                  <Badge variant="secondary" className="gap-1 text-[10px]">
-                    <CheckCircle2 className="h-3 w-3 text-emerald-500" />
-                    Key saved
-                  </Badge>
-                )}
-              </div>
-              <Input
-                type="password"
-                placeholder={hasEmbeddingKey ? 'Enter a new key to replace the saved one' : 'OpenAI key for RAG embeddings'}
-                value={embeddingKey}
-                onChange={(e) => setEmbeddingKey(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                Needed for knowledge base (RAG) semantic search. Uses OpenAI text-embedding-3-small.
-              </p>
-            </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <TextField label="Model" required value={form.model} onChange={(v) => setForm({ ...form, model: v })} error={errors.model} placeholder={p.defaultModel} hint={`Default for ${p.name}: ${p.defaultModel}`} />
+          {p.needsBase && <TextField label="Server address" type="url" inputMode="url" value={form.baseUrl} onChange={(v) => setForm({ ...form, baseUrl: v })} placeholder="http://localhost:11434" />}
+          {p.needsKey && (
+            <Field label="API key" required={!keySaved} error={errors.apiKey}
+              hint={<>{keySaved ? 'A key is saved. Paste a new one only to replace it. ' : ''}Get one from <a className="underline underline-offset-2" href={p.keyUrl} target="_blank" rel="noopener noreferrer">{new URL(p.keyUrl).hostname}</a>.</>}
+              trailing={<button type="button" onClick={() => setShow((s) => !s)} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground" aria-pressed={show}>{show ? <EyeOff aria-hidden="true" className="h-3.5 w-3.5" /> : <Eye aria-hidden="true" className="h-3.5 w-3.5" />} {show ? 'Hide' : 'Show'}</button>}>
+              {({ id, describedBy, invalid }) => (
+                <input id={id} type={show ? 'text' : 'password'} autoComplete="off" spellCheck={false} value={form.apiKey} onChange={(e) => setForm({ ...form, apiKey: e.target.value })} placeholder={keySaved ? '•••••••••••• saved' : 'sk-…'} aria-describedby={describedBy} aria-invalid={invalid || undefined}
+                  className="h-10 w-full rounded-lg border border-input bg-transparent px-3 font-mono text-sm outline-none placeholder:font-sans placeholder:text-muted-foreground focus:border-ring focus:ring-3 focus:ring-ring/50 dark:bg-input/30" />
+              )}
+            </Field>
           )}
+          {form.provider !== 'openai' && (
+            <TextField label="OpenAI key for images and website memory" type={show ? 'text' : 'password'} autoComplete="off" value={form.embeddingKey} onChange={(v) => setForm({ ...form, embeddingKey: v })} placeholder={initial.hasEmbeddingKey ? '•••••••••••• saved' : 'sk-… (optional)'} hint="Optional. Without it, images use a free provider and the website knowledge base is text-only." />
+          )}
+        </div>
 
-          <Button onClick={handleSave} disabled={saving} className="gradient-bg animate-gradient shadow-lg card-3d">
-            {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-            Save AI Settings
-          </Button>
-        </CardContent>
-      </Card>
+        <div className="flex justify-end">
+          <Button onClick={save} disabled={busy}>{busy ? <Loader2 aria-hidden="true" className="mr-1.5 h-4 w-4 animate-spin" /> : <Save aria-hidden="true" className="mr-1.5 h-4 w-4" />} Save AI brain</Button>
+        </div>
+      </div>
+    </Section>
+  )
+}
 
-      <Card className="glass card-3d">
-        <CardHeader>
-          <CardTitle>Model Selection</CardTitle>
-          <CardDescription>Choose your AI model in the AI Manager</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/20">
-                <CurrentIcon className="h-5 w-5 text-blue-500" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">Pick a model in the AI Manager</p>
-                <p className="text-xs text-muted-foreground">The model dropdown lives in the AI Manager page so you can switch models while chatting.</p>
-              </div>
-            </div>
-            <Button variant="outline" className="glass card-3d" onClick={() => window.location.href = '/ai-manager'}>
-              Go to AI Manager
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+function StrategyForm({ initial, currency, onSaved }: { initial: Strategy; currency: string; onSaved: (s: Strategy) => void }) {
+  const [form, setForm] = useState({
+    dailyBudgetCap: initial.dailyBudgetCap?.toString() ?? '',
+    monthlyBudget: initial.monthlyBudget?.toString() ?? '',
+    targetRoas: initial.targetRoas?.toString() ?? '3',
+    targetCpa: initial.targetCpa?.toString() ?? '',
+    focus: initial.focus ?? '',
+    autoOptimize: initial.autoOptimize,
+  })
+  const [busy, setBusy] = useState(false)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+
+  async function save() {
+    const errs: Record<string, string> = {}
+    const daily = form.dailyBudgetCap ? Number(form.dailyBudgetCap) : null
+    const monthly = form.monthlyBudget ? Number(form.monthlyBudget) : null
+    if (daily != null && !(daily > 0)) errs.dailyBudgetCap = 'Enter a positive amount.'
+    if (monthly != null && !(monthly > 0)) errs.monthlyBudget = 'Enter a positive amount.'
+    if (daily != null && monthly != null && daily > monthly) errs.dailyBudgetCap = 'The daily cap cannot exceed the monthly cap.'
+    if (!(Number(form.targetRoas) > 0)) errs.targetRoas = 'Enter a number above 0, e.g. 3 means ₹3 back per ₹1.'
+    setErrors(errs)
+    if (Object.keys(errs).length) return
+    setBusy(true)
+    try {
+      const res = await fetch('/api/strategy', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dailyBudgetCap: daily, monthlyBudget: monthly, targetRoas: Number(form.targetRoas), targetCpa: form.targetCpa ? Number(form.targetCpa) : null, focus: form.focus || null, autoOptimize: form.autoOptimize }) })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error || 'Save failed')
+      onSaved(j.strategy)
+      toast.success('Caps and targets saved')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Save failed')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="space-y-4">
+      <Section title="Spending caps" description="Enforced in code before any budget reaches Meta. The AI cannot talk its way past them.">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <TextField label={`Daily cap (${currency})`} inputMode="numeric" value={form.dailyBudgetCap} onChange={(v) => setForm({ ...form, dailyBudgetCap: v.replace(/[^\d]/g, '') })} error={errors.dailyBudgetCap} hint="The most all campaigns together may spend in one day." />
+          <TextField label={`Monthly cap (${currency})`} inputMode="numeric" value={form.monthlyBudget} onChange={(v) => setForm({ ...form, monthlyBudget: v.replace(/[^\d]/g, '') })} error={errors.monthlyBudget} hint="Spending stops for the month when this is reached." />
+        </div>
+        {!form.dailyBudgetCap && <p className="mt-3 rounded-lg bg-[var(--status-critical)]/10 px-3 py-2 text-xs text-[var(--status-critical-ink)]">No daily cap is set. Any budget the AI proposes would be allowed through.</p>}
+      </Section>
+
+      <Section title="Targets" description="What 'good' means for this business. Used to judge campaigns and decide what to scale.">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <TextField label="Target ROAS" required inputMode="decimal" value={form.targetRoas} onChange={(v) => setForm({ ...form, targetRoas: v.replace(/[^\d.]/g, '') })} error={errors.targetRoas} hint="Revenue per rupee spent. 3 means ₹3 back for every ₹1." />
+          <TextField label={`Target cost per result (${currency})`} inputMode="numeric" value={form.targetCpa} onChange={(v) => setForm({ ...form, targetCpa: v.replace(/[^\d]/g, '') })} hint="Optional. What one sale or lead is worth paying for." />
+        </div>
+        <div className="mt-4 space-y-4">
+          <TextAreaField label="Focus for this period" rows={2} value={form.focus} onChange={(v) => setForm({ ...form, focus: v })} placeholder="Push the Diwali bundle; hold spend on the single ebooks." hint="A sentence the AI keeps in mind when it plans." />
+          <Field label="Automation level">
+            {() => (
+              <ChipGroup
+                size="sm"
+                value={form.autoOptimize ? 'auto' : 'ask'}
+                onChange={(v) => v && setForm({ ...form, autoOptimize: v === 'auto' })}
+                options={[
+                  { value: 'ask', label: 'Ask me before changing budgets', hint: 'Every budget or status change waits for your approval.' },
+                  { value: 'auto', label: 'Adjust within the caps automatically', hint: 'Small changes inside the caps happen on their own; big ones still ask.' },
+                ]}
+              />
+            )}
+          </Field>
+          <SwitchRow label="Auto-optimise" description={form.autoOptimize ? 'On. Routine changes inside the caps run without asking.' : 'Off. Everything that moves money asks first.'} control={<Switch checked={form.autoOptimize} onCheckedChange={(v) => setForm({ ...form, autoOptimize: v })} />} className="border-t border-border" />
+        </div>
+      </Section>
+
+      <div className="flex justify-end">
+        <Button onClick={save} disabled={busy}>{busy ? <Loader2 aria-hidden="true" className="mr-1.5 h-4 w-4 animate-spin" /> : <Save aria-hidden="true" className="mr-1.5 h-4 w-4" />} Save caps and targets</Button>
+      </div>
     </div>
   )
 }
