@@ -30,6 +30,8 @@ export const SAFE_TOOLS = new Set([
   'create_local_creative', 'update_local_creative',
   'review_creative', 'improve_creative',
   'generate_ad_image', 'generate_creative_with_image',
+  // Connected research is read-only; listing tools is metadata
+  'research_web', 'list_connected_tools',
   // Scheduling metadata only; the routine itself is guardrailed when it runs
   'list_scheduled_jobs', 'create_scheduled_job', 'update_scheduled_job', 'delete_scheduled_job',
 ])
@@ -44,6 +46,7 @@ export const APPROVAL_TOOLS = new Set([
   'publish_campaign_to_meta', 'publish_full_campaign', 'set_campaign_status',
   'update_strategy',
   'delete_local_campaign', 'delete_local_creative',
+  'call_connected_tool',
 ])
 
 export type RiskLevel = 'low' | 'medium' | 'high'
@@ -63,6 +66,8 @@ export function classifyRisk(tool: string): RiskLevel {
   const medium = new Set([
     'create_campaign', 'create_ad_set', 'create_ad', 'create_ad_creative',
     'create_custom_audience', 'create_lookalike_audience', 'pause_campaign', 'update_strategy',
+    // Spends a third party's credits, never Meta ad budget
+    'call_connected_tool',
   ])
   if (medium.has(tool)) return 'medium'
 

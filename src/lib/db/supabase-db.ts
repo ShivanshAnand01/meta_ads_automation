@@ -291,4 +291,5 @@ export const db = {
   aiAction: model('ai_actions'),
   dailyMetric: model('daily_metrics'),
   pendingApproval: model('pending_approvals'),
+  integration: model('integrations'),
 }

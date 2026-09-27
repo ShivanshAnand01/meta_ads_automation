@@ -19,6 +19,7 @@ import { generateStructured, creativeSuggestionSchema, enforceCopyLimits } from 
 import { suggestCreativeImprovements } from '@/lib/ai/creative-generator'
 import { reviewCreative } from '@/lib/ai/creative-reviewer'
 import { connectMetaAccount, selectAdAccount } from '@/lib/meta/connect'
+import { researchWeb, describeConnectedTools, callConnectedTool } from '@/lib/integrations/server'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -130,6 +131,18 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
     }
     case 'select_ad_account': {
       return await selectAdAccount(userId, String(args.ad_account_id || ''))
+    }
+
+    // --- Connected third-party tools (Setup → Connections) ---------------
+    case 'research_web': {
+      return await researchWeb(userId, String(args.query || ''), num(args.limit) || 5)
+    }
+    case 'list_connected_tools': {
+      return await describeConnectedTools(userId, args.slug ? String(args.slug) : undefined)
+    }
+    case 'call_connected_tool': {
+      const toolArgs = args.arguments && typeof args.arguments === 'object' ? (args.arguments as Record<string, unknown>) : {}
+      return await callConnectedTool(userId, String(args.slug || ''), String(args.tool || ''), toolArgs)
     }
 
     // --- Ask user a clarifying question (popup on chat) -----------------

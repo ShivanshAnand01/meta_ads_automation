@@ -18,6 +18,7 @@ import { logAction } from '@/lib/ai/audit'
 import { generateStructured, creativeSuggestionSchema, enforceCopyLimits } from '@/lib/ai/structured'
 import { checkBudget, buildPacingContext } from '@/lib/ai/budget-guard'
 import { getProfile, buildProfileContext, type BusinessProfile } from '@/lib/ai/profile'
+import { buildIntegrationsContext } from '@/lib/integrations/server'
 
 /**
  * How many past messages to keep in the model's context. Tool results are
@@ -239,6 +240,10 @@ export class AIManager {
       profileContext = buildProfileContext(profile)
     } catch {}
 
+    // What the business plugged in under Connections, so the agent knows it
+    // can research the web or call an image model before it tries.
+    const integrationsContext = await buildIntegrationsContext(this.userId).catch(() => '')
+
     let strategyContext = ''
     try {
       if (!this.strategy) this.strategy = await getStrategy(this.userId)
@@ -297,6 +302,7 @@ export class AIManager {
       `CONTEXT: ${metaStatus} The user has ${localCampaigns.length} local campaign(s) and ${localCreatives.length} local creative(s).`,
       'Call sync_campaign_insights before analyzing performance so you work with real Meta data.',
       profileContext,
+      integrationsContext,
       strategyContext,
       pacingContext,
       memoryContext,

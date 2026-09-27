@@ -1,6 +1,7 @@
 import type { ToolDefinition } from './types'
 import { DELIVERY_TOOLS } from './tool-definitions.delivery'
 import { ONBOARDING_TOOLS } from './tool-definitions.onboarding'
+import { INTEGRATION_TOOLS } from './tool-definitions.integrations'
 
 /**
  * LOCAL_TOOLS — tools that operate entirely on the local platform database.
@@ -872,7 +873,7 @@ export const MASTERMIND_TOOLS: ToolDefinition[] = [
 export const ALL_TOOLS: ToolDefinition[] = (() => {
   const seen = new Set<string>()
   const out: ToolDefinition[] = []
-  for (const tool of [...ONBOARDING_TOOLS, ...LOCAL_TOOLS, ...MASTERMIND_TOOLS, ...DELIVERY_TOOLS]) {
+  for (const tool of [...ONBOARDING_TOOLS, ...LOCAL_TOOLS, ...MASTERMIND_TOOLS, ...DELIVERY_TOOLS, ...INTEGRATION_TOOLS]) {
     if (seen.has(tool.function.name)) continue
     seen.add(tool.function.name)
     out.push(tool)

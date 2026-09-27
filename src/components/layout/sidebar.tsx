@@ -20,6 +20,7 @@ import {
   Moon,
   Sun,
   Building2,
+  Plug,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { createClient } from '@/lib/supabase/client'
@@ -65,6 +66,7 @@ const NAV_GROUPS: Array<{
     items: [
       { href: '/business', label: 'Business Profile', icon: Building2 },
       { href: '/connect', label: 'Meta Connection', icon: Link2 },
+      { href: '/connections', label: 'Connections', icon: Plug },
       { href: '/settings', label: 'Settings', icon: Settings },
       { href: '/profile', label: 'Account', icon: User },
     ],
@@ -119,14 +121,14 @@ export function Sidebar() {
           </div>
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-sidebar-foreground">AdManager</p>
-            <p className="truncate text-[11px] text-sidebar-foreground/60">Meta Ads, run by AI</p>
+            <p className="truncate text-xs text-sidebar-foreground/70">Meta Ads, run by AI</p>
           </div>
         </div>
 
         <nav id="primary-navigation" aria-label="Main navigation" className="flex-1 overflow-y-auto scrollbar-thin px-3 py-4">
           {NAV_GROUPS.map((group) => (
             <div key={group.label} className="mb-5 last:mb-0">
-              <p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/45">
+              <p className="px-3 pb-1.5 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/65">
                 {group.label}
               </p>
               <ul className="space-y-0.5">

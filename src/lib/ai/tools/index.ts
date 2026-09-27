@@ -57,6 +57,7 @@ const LOCAL_TOOL_NAMES = new Set([
   'list_scheduled_jobs', 'create_scheduled_job', 'update_scheduled_job', 'delete_scheduled_job',
   'generate_chart', 'generate_report', 'transcribe_audio', 'speak',
   'search_memory', 'reflect_and_learn',
+  'research_web', 'list_connected_tools', 'call_connected_tool',
 ])
 
 /**
@@ -416,6 +417,8 @@ function buildApprovalSummary(tool: string, args: Record<string, unknown>): stri
       return `${a.active ? 'Resume' : 'Pause'} ad ${a.ad_id}.`
     case 'create_ad_creative':
       return `Create Meta ad creative "${a.name}" linking to ${a.link_url}.`
+    case 'call_connected_tool':
+      return `Run "${a.tool}" on ${a.slug}${a.reason ? `: ${a.reason}` : ''}. This can use that provider's credits.`
     case 'publish_campaign_to_meta':
     case 'publish_full_campaign':
       return `Publish campaign ${a.campaignId || a.campaign_id} to Meta as campaign → ad set → ad${a.activate ? ' and START it spending immediately' : ' (paused)'}.`
