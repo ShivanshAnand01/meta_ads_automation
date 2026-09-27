@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { PageHeader, StatusPill, EmptyState } from '@/components/ui/metric'
-import { TextField, ChipGroup, Field } from '@/components/ui/field'
+import { TextField, TextAreaField, ChipGroup, Field } from '@/components/ui/field'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
 import { Plus, Play, Pause, Trash2, Loader2, CalendarClock, Sun, Gauge, Radar, FileBarChart, Brain, Wand2 } from 'lucide-react'
@@ -158,6 +158,8 @@ function CreateDialog({ open, onOpenChange, campaigns, existing, onDone }: { ope
   const [cron, setCron] = useState(ROUTINES.morning_optimization.suggested)
   const [customCron, setCustomCron] = useState('')
   const [campaignId, setCampaignId] = useState('')
+  const [prompt, setPrompt] = useState('')
+  const [promptError, setPromptError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const custom = !PRESETS.some((p) => p.value === cron)
@@ -166,9 +168,12 @@ function CreateDialog({ open, onOpenChange, campaigns, existing, onDone }: { ope
     const expr = custom ? customCron.trim() : cron
     if (!/^(\S+\s+){4}\S+$/.test(expr)) { setError('A cron expression has five parts, e.g. 30 3 * * 1'); return }
     setError(null)
+    // A custom routine with no instruction would run and do nothing.
+    if (type === 'custom' && prompt.trim().length < 10) { setPromptError('Tell the agent what to do, in a sentence or two.'); return }
+    setPromptError(null)
     setBusy(true)
     try {
-      const res = await fetch('/api/schedule', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type, cronExpression: expr, campaignId: campaignId || null }) })
+      const res = await fetch('/api/schedule', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type, cronExpression: expr, campaignId: campaignId || null, config: type === 'custom' ? { prompt: prompt.trim() } : null }) })
       const j = await res.json()
       if (!res.ok) throw new Error(j.error || 'Could not create')
       toast.success(`${ROUTINES[type].label} scheduled`)
@@ -204,9 +209,25 @@ function CreateDialog({ open, onOpenChange, campaigns, existing, onDone }: { ope
             })}
           </div>
 
+          {type === 'custom' && (
+            <TextAreaField
+              label="What should the agent do?"
+              required
+              rows={3}
+              value={prompt}
+              onChange={(v) => { setPrompt(v); setPromptError(null) }}
+              error={promptError}
+              placeholder="e.g. Check yesterday's ads. If any ad's cost per result rose more than 30%, pause it and tell me why."
+              hint="Written like a message to the agent. Spend changes still follow your approval and budget rules."
+            />
+          )}
+
           <Field label="How often">
             {() => <ChipGroup size="sm" value={custom ? 'custom' : cron} onChange={(v) => { if (!v) return; if (v === 'custom') { setCron(''); setCustomCron('30 3 * * *') } else setCron(v as string) }} options={[...PRESETS, { value: 'custom', label: 'Custom cron' }]} />}
           </Field>
+          <p className="-mt-2 text-xs leading-relaxed text-muted-foreground">
+            The scheduler checks once a day at 06:00 IST, so a routine runs at the first check after it falls due. Hourly checks need the n8n heartbeat or Vercel Pro.
+          </p>
           {custom && <TextField label="Cron expression" value={customCron} onChange={setCustomCron} error={error} hint="minute hour day month weekday, in UTC. 30 3 * * 1 is Monday 09:00 IST." />}
 
           {campaigns.length > 0 && (

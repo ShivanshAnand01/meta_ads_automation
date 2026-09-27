@@ -51,6 +51,7 @@ const REQUIRED_SCOPES: Array<{ scope: string; why: string }> = [
   { scope: 'business_management', why: 'See the ad account and pixels' },
   { scope: 'pages_show_list', why: 'Publish ads from your Facebook Page' },
   { scope: 'pages_read_engagement', why: 'Attach the Page to link ads' },
+  { scope: 'pages_manage_ads', why: 'Run ads from your Page' },
 ]
 
 function daysUntil(ts: number | string | null | undefined): number | null {

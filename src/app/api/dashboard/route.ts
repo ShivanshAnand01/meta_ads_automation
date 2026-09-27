@@ -5,6 +5,9 @@ import { getAccountSummary } from '@/lib/meta/sync'
 import { getStrategy } from '@/lib/ai/strategy'
 import { getSpendSoFar } from '@/lib/ai/budget-guard'
 import { computeDerived, sumTotals } from '@/lib/meta/metrics'
+import { getProfile } from '@/lib/ai/profile'
+import { listIntegrations } from '@/lib/integrations/server'
+import { getProvider } from '@/lib/integrations/catalog'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -47,6 +50,14 @@ export async function GET() {
 
     let strategy: any = null
     try { strategy = await getStrategy(userId) } catch {}
+
+    // What still stands between this account and its first real ad. Shown
+    // on the dashboard until every item is done.
+    const [profile, integrations] = await Promise.all([
+      getProfile(userId).catch(() => null),
+      listIntegrations(userId).catch(() => []),
+    ])
+    const aiKeySet = Boolean((aiSettings as any)?.apiKey) || (aiSettings as any)?.provider === 'ollama'
 
     return Response.json({
       connected: !!conn,
@@ -126,7 +137,15 @@ export async function GET() {
         cpa: pctChange(summary.cpa, prevDerived.cpa),
         ctr: pctChange(summary.ctr, prevDerived.ctr),
       },
-      aiConfigured: !!aiSettings,
+      // A settings row without a key cannot run the agent.
+      aiConfigured: aiKeySet,
+      readiness: {
+        aiKey: aiKeySet,
+        profile: Boolean(profile?.businessName && profile?.targetAudience),
+        landingUrl: Boolean(profile?.landingUrl),
+        caps: Boolean(strategy?.dailyBudgetCap && strategy?.monthlyBudget),
+        research: integrations.some((i) => i.status === 'connected' && getProvider(i.provider)?.category === 'research'),
+      },
       lastSyncedAt: campaigns.reduce<string | null>((latest, c) => {
         const t = c.lastSyncedAt as string | null
         if (!t) return latest

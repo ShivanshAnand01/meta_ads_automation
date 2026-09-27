@@ -104,7 +104,7 @@ export function TextAreaField({
       {...field}
       trailing={
         maxLength ? (
-          <span className={cn('text-[11px] tabular', value.length > maxLength ? 'text-[var(--status-critical-ink)]' : 'text-muted-foreground')}>
+          <span className={cn('text-xs tabular', value.length > maxLength ? 'text-[var(--status-critical-ink)]' : 'text-muted-foreground')}>
             {value.length}/{maxLength}
           </span>
         ) : field.trailing

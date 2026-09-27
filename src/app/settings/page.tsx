@@ -9,6 +9,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { PageHeader, Section, StatusPill, formatCurrency } from '@/components/ui/metric'
 import { TextField, TextAreaField, ChipGroup, Field, SwitchRow } from '@/components/ui/field'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
+import { MODEL_PRESETS } from '@/lib/ai/model-catalog'
 import { Loader2, Save, Eye, EyeOff, Sparkles, Cpu, Key, Server, ShieldCheck } from 'lucide-react'
 
 /**
@@ -22,7 +23,7 @@ import { Loader2, Save, Eye, EyeOff, Sparkles, Cpu, Key, Server, ShieldCheck } f
 
 const PROVIDERS = [
   { value: 'anthropic', name: 'Claude (Anthropic)', icon: Sparkles, blurb: 'Strongest at Indian-language copy and reasoning. Recommended.', needsKey: true, needsBase: false, defaultModel: 'claude-sonnet-5', keyUrl: 'https://console.anthropic.com/settings/keys' },
-  { value: 'openai', name: 'OpenAI', icon: Key, blurb: 'Good multilingual support. Also unlocks image generation.', needsKey: true, needsBase: false, defaultModel: 'gpt-4.1-mini', keyUrl: 'https://platform.openai.com/api-keys' },
+  { value: 'openai', name: 'OpenAI', icon: Key, blurb: 'Good multilingual support. Also unlocks image generation.', needsKey: true, needsBase: false, defaultModel: 'gpt-5.4-mini', keyUrl: 'https://platform.openai.com/api-keys' },
   { value: 'groq', name: 'Groq', icon: Server, blurb: 'Very fast, free tier. Weaker Devanagari.', needsKey: true, needsBase: false, defaultModel: 'llama-3.3-70b-versatile', keyUrl: 'https://console.groq.com/keys' },
   { value: 'ollama', name: 'Ollama (local)', icon: Cpu, blurb: 'Runs on your own machine. No key. Not reachable from the hosted app.', needsKey: false, needsBase: true, defaultModel: 'llama3', keyUrl: 'https://ollama.com' },
 ] as const
@@ -131,7 +132,18 @@ function BrainForm({ initial, onSaved }: { initial: AiSettings; onSaved: (a: AiS
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <TextField label="Model" required value={form.model} onChange={(v) => setForm({ ...form, model: v })} error={errors.model} placeholder={p.defaultModel} hint={`Default for ${p.name}: ${p.defaultModel}`} />
+          <div className="space-y-2 md:col-span-2">
+            <TextField label="Model" required value={form.model} onChange={(v) => setForm({ ...form, model: v })} error={errors.model} placeholder={p.defaultModel}
+              hint={MODEL_PRESETS[form.provider]?.find((m) => m.value === form.model)?.note ?? 'Any model ID your key can use. Pick a preset below or type one.'} />
+            {(MODEL_PRESETS[form.provider]?.length ?? 0) > 0 && (
+              <ChipGroup<string>
+                size="sm"
+                options={MODEL_PRESETS[form.provider].map((m) => ({ value: m.value, label: m.label, hint: m.note }))}
+                value={form.model}
+                onChange={(v) => { if (typeof v === 'string') setForm({ ...form, model: v }) }}
+              />
+            )}
+          </div>
           {p.needsBase && <TextField label="Server address" type="url" inputMode="url" value={form.baseUrl} onChange={(v) => setForm({ ...form, baseUrl: v })} placeholder="http://localhost:11434" />}
           {p.needsKey && (
             <Field label="API key" required={!keySaved} error={errors.apiKey}
@@ -175,7 +187,7 @@ function StrategyForm({ initial, currency, onSaved }: { initial: Strategy; curre
     if (daily != null && !(daily > 0)) errs.dailyBudgetCap = 'Enter a positive amount.'
     if (monthly != null && !(monthly > 0)) errs.monthlyBudget = 'Enter a positive amount.'
     if (daily != null && monthly != null && daily > monthly) errs.dailyBudgetCap = 'The daily cap cannot exceed the monthly cap.'
-    if (!(Number(form.targetRoas) > 0)) errs.targetRoas = 'Enter a number above 0, e.g. 3 means ₹3 back per ₹1.'
+    if (!(Number(form.targetRoas) > 0)) errs.targetRoas = 'Enter a number above 0. 3 means 3 back for every 1 spent.'
     setErrors(errs)
     if (Object.keys(errs).length) return
     setBusy(true)

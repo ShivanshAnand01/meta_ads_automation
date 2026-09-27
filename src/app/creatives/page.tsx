@@ -393,7 +393,7 @@ function CreativeCard({
       <AdPreview compact ad={toPreview(c, profile)} />
 
       {notes.length > 0 && (
-        <ul className="space-y-1 rounded-lg bg-[var(--status-warning)]/10 px-3 py-2 text-[11px] leading-snug text-amber-800 dark:text-amber-200">
+        <ul className="space-y-1 rounded-lg bg-[var(--status-warning)]/10 px-3 py-2 text-xs leading-snug text-amber-800 dark:text-amber-200">
           {notes.map((n) => (
             <li key={n} className="flex gap-1.5"><TriangleAlert aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0" />{n}</li>
           ))}
@@ -402,15 +402,15 @@ function CreativeCard({
 
       <dl className="grid grid-cols-3 gap-2 text-center">
         <div className="rounded-lg bg-muted/60 px-2 py-1.5">
-          <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">{hasResults ? 'Real ROAS' : 'Est. ROAS'}</dt>
+          <dt className="text-xs uppercase tracking-wide text-muted-foreground">{hasResults ? 'Real ROAS' : 'Est. ROAS'}</dt>
           <dd className="text-sm font-semibold tabular">{hasResults ? `${(c.actualRoas ?? 0).toFixed(1)}×` : c.expectedRoas != null ? `~${c.expectedRoas.toFixed(1)}×` : '—'}</dd>
         </div>
         <div className="rounded-lg bg-muted/60 px-2 py-1.5">
-          <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">Clicks</dt>
+          <dt className="text-xs uppercase tracking-wide text-muted-foreground">Clicks</dt>
           <dd className="text-sm font-semibold tabular">{c.clicks ?? '—'}</dd>
         </div>
         <div className="rounded-lg bg-muted/60 px-2 py-1.5">
-          <dt className="text-[10px] uppercase tracking-wide text-muted-foreground">Sales</dt>
+          <dt className="text-xs uppercase tracking-wide text-muted-foreground">Sales</dt>
           <dd className="text-sm font-semibold tabular">{c.conversions ?? '—'}</dd>
         </div>
       </dl>
@@ -646,7 +646,7 @@ function ManualDialog({ open, onOpenChange, profile, onDone }: { open: boolean; 
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Preview</p>
             <AdPreview compact ad={preview} />
             {profile?.landingUrl && (
-              <p className="flex items-center gap-1 text-[11px] text-muted-foreground"><ExternalLink aria-hidden="true" className="h-3 w-3" /> Links to {hostOf(profile.landingUrl)}</p>
+              <p className="flex items-center gap-1 text-xs text-muted-foreground"><ExternalLink aria-hidden="true" className="h-3 w-3" /> Links to {hostOf(profile.landingUrl)}</p>
             )}
           </div>
         </div>

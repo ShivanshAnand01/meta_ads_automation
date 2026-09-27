@@ -36,7 +36,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "AdManager — AI-Powered Meta Ads Platform",
-  description: "Automate your Meta Ads with AI. Built for the Maharashtrian market.",
+  description: "An AI team that plans, writes, publishes and optimises your Meta ads, in your language, within your budget.",
   // This is a private client tool, not a page that should be indexed.
   robots: { index: false, follow: false },
 };

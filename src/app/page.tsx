@@ -8,6 +8,9 @@ import {
   AlertCircle,
   ArrowRight,
   BadgeCheck,
+  CheckCircle2,
+  Circle,
+  Plug,
   Link2,
   Megaphone,
   RefreshCw,
@@ -93,6 +96,7 @@ interface DashboardData {
   deltas?: Partial<Record<'spend' | 'revenue' | 'roas' | 'conversions' | 'cpa' | 'ctr', number | null>>
   aiConfigured: boolean
   lastSyncedAt?: string | null
+  readiness?: { aiKey: boolean; profile: boolean; landingUrl: boolean; caps: boolean; research: boolean }
 }
 
 const EMPTY_STATS = {
@@ -292,6 +296,8 @@ export default function DashboardPage() {
         </Section>
       )}
 
+      {data.readiness && <ReadinessChecklist r={data.readiness} />}
+
       {/* 2 ── Budget. The guardrail made visible: these are the same numbers
              the server enforces, so the limit is something the client can see
              rather than something they have to trust. */}
@@ -304,7 +310,7 @@ export default function DashboardPage() {
           </Button>
         }
       >
-        <div className="grid gap-6 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
           <PacingBar label="Spent today" spent={pacing.spentToday} cap={pacing.dailyCap} currency={currency} />
           <PacingBar label="Spent this month" spent={pacing.spentThisMonth} cap={pacing.monthlyCap} currency={currency} />
         </div>
@@ -312,7 +318,7 @@ export default function DashboardPage() {
 
       {/* 3 ── Is it working? ROAS leads at double weight; the supporting
              measures sit beside it, deliberately smaller. */}
-      <div className="grid gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatTile
           className="lg:col-span-1"
           emphasis
@@ -368,7 +374,7 @@ export default function DashboardPage() {
       </Section>
 
       {/* 5 ── What's next. */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Section
           title="Creatives awaiting review"
           description="Approve a creative before it can be published as an ad."
@@ -401,7 +407,7 @@ export default function DashboardPage() {
             <EmptyState
               icon={Sparkles}
               title="No creatives yet"
-              description="Generate Marathi ad copy and a matching image in one step, then review before it goes live."
+              description="Generate ad copy in your language with a matching image, then review it before anything goes live."
               action={
                 <Button nativeButton={false} render={<Link href="/creatives" />}>Generate a creative</Button>
               }
@@ -451,6 +457,60 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="font-medium tabular">{value}</dd>
     </div>
+  )
+}
+
+/**
+ * What still stands between a connected account and its first real ad.
+ * Hides itself once every item is done, so it never becomes wallpaper.
+ */
+function ReadinessChecklist({ r }: { r: NonNullable<DashboardData['readiness']> }) {
+  const items = [
+    { done: r.aiKey, title: 'AI provider key', description: 'The agent needs a key to think and write.', href: '/settings', cta: 'Add key', icon: Sparkles },
+    { done: r.profile, title: 'Business profile', description: 'Who you sell to and how you talk. Every ad is written from it.', href: '/business', cta: 'Complete', icon: Megaphone },
+    { done: r.landingUrl, title: 'Landing page for ads', description: 'Where people go when they tap your ad. Publishing refuses without it.', href: '/business', cta: 'Add URL', icon: Link2 },
+    { done: r.caps, title: 'Daily and monthly spend caps', description: 'Hard limits the AI can never cross.', href: '/settings', cta: 'Set caps', icon: Wallet },
+    { done: r.research, title: 'A research tool (optional)', description: 'Lets the agent study competitors. Tavily has a free tier.', href: '/connections', cta: 'Connect', icon: Plug },
+  ]
+  const remaining = items.filter((i) => !i.done)
+  if (remaining.length === 0) return null
+  const doneCount = items.length - remaining.length
+  return (
+    <Section
+      title="Before your first ad goes live"
+      description={`${doneCount} of ${items.length} done. Finish these and the AI Manager can build and publish for you.`}
+    >
+      <div
+        className="mb-4 h-1.5 w-full overflow-hidden rounded-full bg-muted"
+        role="progressbar"
+        aria-label="Setup progress"
+        aria-valuemin={0}
+        aria-valuemax={items.length}
+        aria-valuenow={doneCount}
+      >
+        <div className="h-full rounded-full bg-primary transition-[width] duration-500 motion-reduce:transition-none" style={{ width: `${(doneCount / items.length) * 100}%` }} />
+      </div>
+      <ul className="grid grid-cols-1 gap-2 md:grid-cols-2">
+        {items.map((i) => (
+          <li key={i.title} className="flex min-w-0 items-start gap-3 rounded-lg border border-border p-3">
+            {i.done
+              ? <CheckCircle2 aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-[var(--status-good)]" />
+              : <Circle aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />}
+            <div className="min-w-0 flex-1">
+              <p className={`text-sm font-medium ${i.done ? 'text-muted-foreground line-through decoration-muted-foreground/50' : ''}`}>
+                {i.title}<span className="sr-only">{i.done ? ' (done)' : ' (to do)'}</span>
+              </p>
+              {!i.done && <p className="text-xs leading-relaxed text-muted-foreground">{i.description}</p>}
+            </div>
+            {!i.done && (
+              <Button size="sm" variant="outline" className="shrink-0" nativeButton={false} render={<Link href={i.href} />}>
+                {i.cta}
+              </Button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </Section>
   )
 }
 
@@ -512,7 +572,7 @@ function DashboardSkeleton() {
         <Skeleton className="h-4 w-72" />
       </div>
       <Skeleton className="h-32 rounded-xl" />
-      <div className="grid gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {Array.from({ length: 4 }).map((_, i) => (
           <Skeleton key={i} className="h-28 rounded-xl" />
         ))}

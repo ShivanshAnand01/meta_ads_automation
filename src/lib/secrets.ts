@@ -110,6 +110,9 @@ export async function storeSecret(
   if (VAULT_ENABLED) {
     const ok = await setUserSecret(userId, vaultKey, value, description)
     if (ok) return `${VAULT_SENTINEL}${vaultKey}` // sentinel in the column
+    // Vault is on but the write failed: the key is about to land in plain
+    // text. Say so loudly; this happened once and went unnoticed for weeks.
+    console.error(`[secrets] Vault write failed for "${vaultKey}"; storing in the column instead`)
   }
   // Fallback: keep plaintext in the column (still RLS-protected).
   return value

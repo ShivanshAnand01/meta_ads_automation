@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Image from 'next/image'
+import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
@@ -15,7 +16,9 @@ import {
   DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import { toast } from 'sonner'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, MotionConfig } from 'framer-motion'
+import { StatusPill, type StatusTone } from '@/components/ui/metric'
+import { MODEL_PRESETS } from '@/lib/ai/model-catalog'
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer, Legend,
@@ -122,38 +125,14 @@ type RawConversation = {
 const providerInfo = {
   anthropic: { name: 'Claude (Anthropic)', icon: Sparkles, needsApiKey: true, needsBaseUrl: false, defaultBaseUrl: '', defaultModel: 'claude-sonnet-5' },
   ollama: { name: 'Ollama (Local)', icon: Cpu, needsApiKey: false, needsBaseUrl: true, defaultBaseUrl: 'http://localhost:11434', defaultModel: 'llama3' },
-  openai: { name: 'OpenAI GPT', icon: Key, needsApiKey: true, needsBaseUrl: false, defaultBaseUrl: '', defaultModel: 'gpt-4.1-mini' },
+  openai: { name: 'OpenAI GPT', icon: Key, needsApiKey: true, needsBaseUrl: false, defaultBaseUrl: '', defaultModel: 'gpt-5.4-mini' },
   groq: { name: 'Groq', icon: Server, needsApiKey: true, needsBaseUrl: false, defaultBaseUrl: '', defaultModel: 'llama-3.3-70b-versatile' },
 }
 
-const providerModels: Record<string, { value: string; label: string }[]> = {
-  anthropic: [
-    { value: 'claude-sonnet-5', label: 'Claude Sonnet 5' },
-    { value: 'claude-opus-5', label: 'Claude Opus 5' },
-    { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
-  ],
-  ollama: [
-    { value: 'llama3', label: 'Llama 3 (8B)' },
-    { value: 'llama3:70b', label: 'Llama 3 (70B)' },
-    { value: 'qwen2.5', label: 'Qwen 2.5' },
-    { value: 'mistral', label: 'Mistral' },
-  ],
-  openai: [
-    { value: 'gpt-4o', label: 'GPT-4o' },
-    { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini (Recommended)' },
-    { value: 'gpt-4.1', label: 'GPT-4.1' },
-    { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
-  ],
-  groq: [
-    { value: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B' },
-    { value: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B' },
-    { value: 'mixtral-8x7b-32768', label: 'Mixtral 8x7B' },
-  ],
-}
 
 const suggestions = [
   { icon: TrendingUp, text: 'Show me my campaigns and their performance' },
-  { icon: PenLine, text: 'Create a full Marathi ad creative with image for my ebook' },
+  { icon: PenLine, text: 'Write a complete ad in my language, with an image' },
   { icon: ImageIcon, text: 'Generate an ad creative image' },
   { icon: Eye, text: 'Review my latest ad creative' },
   { icon: Zap, text: 'Test my Meta connection and tell me if it works' },
@@ -166,7 +145,7 @@ function safeParseArray(s: string | null | undefined): unknown[] {
 
 function brainShortLabel(b: BrainConfig): string {
   const prov = providerInfo[b.provider as keyof typeof providerInfo]
-  const modelLabel = providerModels[b.provider]?.find((m) => m.value === b.model)?.label || b.model
+  const modelLabel = MODEL_PRESETS[b.provider]?.find((m) => m.value === b.model)?.label || b.model
   return `${prov?.name.split(' ')[0]} · ${modelLabel}`
 }
 
@@ -272,21 +251,32 @@ function ChartRenderer({ spec }: { spec: { chartType: string; data: Array<Record
   )
 }
 
+const RISK_TONE: Record<string, { tone: StatusTone; label: string }> = {
+  high: { tone: 'critical', label: 'High risk' },
+  medium: { tone: 'warning', label: 'Medium risk' },
+  low: { tone: 'good', label: 'Low risk' },
+}
+
+function humanizeTool(name: string): string {
+  const t = name.replace(/_/g, ' ')
+  return t.charAt(0).toUpperCase() + t.slice(1)
+}
+
 function ApprovalCard({ approval, onDecision, busy }: { approval: { id: string; toolName: string; summary: string; risk: string }; onDecision: (id: string, decision: 'approve' | 'reject') => void; busy: boolean }) {
-  const riskColor = approval.risk === 'high' ? 'text-red-500' : approval.risk === 'medium' ? 'text-amber-500' : 'text-emerald-500'
+  const risk = RISK_TONE[approval.risk] ?? RISK_TONE.high
   return (
-    <div className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-3 space-y-2">
-      <div className="flex items-center gap-2">
-        <ShieldAlert className="h-4 w-4 text-amber-500" />
-        <span className="text-xs font-mono font-semibold text-primary">{approval.toolName}</span>
-        <span className={`text-[10px] font-semibold ml-auto uppercase ${riskColor}`}>{approval.risk} risk</span>
+    <div className="space-y-2.5 rounded-xl border border-[var(--status-warning)]/40 bg-[var(--status-warning)]/5 p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <ShieldAlert aria-hidden="true" className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-300" />
+        <span className="min-w-0 text-sm font-medium">{humanizeTool(approval.toolName)}</span>
+        <StatusPill tone={risk.tone} className="ml-auto">{risk.label}</StatusPill>
       </div>
-      <p className="text-xs text-muted-foreground">{approval.summary}</p>
+      <p className="text-sm leading-relaxed text-muted-foreground">{approval.summary}</p>
       <div className="flex gap-2">
-        <Button size="sm" className="h-7 text-xs" disabled={busy} onClick={() => onDecision(approval.id, 'approve')}>
-          Approve & Run
+        <Button size="sm" className="h-9" disabled={busy} onClick={() => onDecision(approval.id, 'approve')}>
+          Approve and run
         </Button>
-        <Button size="sm" variant="outline" className="h-7 text-xs" disabled={busy} onClick={() => onDecision(approval.id, 'reject')}>
+        <Button size="sm" variant="outline" className="h-9" disabled={busy} onClick={() => onDecision(approval.id, 'reject')}>
           Reject
         </Button>
       </div>
@@ -294,7 +284,16 @@ function ApprovalCard({ approval, onDecision, busy }: { approval: { id: string; 
   )
 }
 
+/** Respect the OS "reduce motion" setting for every animation on this page. */
 export default function AIManagerPage() {
+  return (
+    <MotionConfig reducedMotion="user">
+      <AIManagerPageInner />
+    </MotionConfig>
+  )
+}
+
+function AIManagerPageInner() {
   const [activeConversation, setActiveConversation] = useState<Conversation | null>(null)
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [input, setInput] = useState('')
@@ -720,15 +719,15 @@ export default function AIManagerPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setShowKBDialog(true)} className="gap-1.5">
+            <Button variant="outline" size="sm" onClick={() => setShowKBDialog(true)} className="gap-1.5" aria-label="Knowledge base">
               <BookOpen className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Knowledge Base</span>
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setShowBrainDialog(true)} className="gap-1.5">
+            <Button variant="outline" size="sm" onClick={() => setShowBrainDialog(true)} className="gap-1.5" aria-label={brain ? `AI model: ${brainShortLabel(brain)}` : 'Configure AI model'}>
               <Cpu className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">{brain ? brainShortLabel(brain) : 'Configure'}</span>
             </Button>
-            <Button variant="outline" size="sm" onClick={newConversation} className="gap-1.5">
+            <Button variant="outline" size="sm" onClick={newConversation} className="gap-1.5" aria-label="New conversation">
               <Plus className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">New</span>
             </Button>
@@ -753,10 +752,10 @@ export default function AIManagerPage() {
                   <div className="text-center max-w-md">
                     <h2 className="text-2xl font-semibold tracking-tight">AI Ads Manager</h2>
                     <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
-                      Ask anything about your Meta Ads — create campaigns, generate Marathi creatives, review performance, or get strategy advice.
+                      Ask anything about your Meta Ads — create campaigns, write ads in your language, review performance, or get strategy advice.
                     </p>
                   </div>
-                  <div className="grid w-full max-w-xl gap-3 sm:grid-cols-2">
+                  <div className="grid w-full max-w-xl grid-cols-1 gap-3 sm:grid-cols-2">
                     {suggestions.map((s, i) => (
                       <motion.button
                         key={i}
@@ -764,7 +763,7 @@ export default function AIManagerPage() {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: i * 0.06 }}
                         onClick={() => { setInput(s.text) }}
-                        className="group flex items-start gap-3 rounded-2xl border border-border/40 bg-background/40 p-4 text-left text-sm transition-all hover:bg-primary/5 hover:border-primary/30 hover:shadow-md hover:-translate-y-0.5"
+                        className="group flex items-start gap-3 rounded-2xl border border-border/40 bg-background/40 p-4 min-w-0 text-left text-sm transition-[background-color,border-color,box-shadow,transform] duration-200 hover:bg-primary/5 hover:border-primary/30 hover:shadow-md hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:hover:translate-y-0"
                       >
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                           <s.icon className="h-4 w-4" />
@@ -890,14 +889,14 @@ export default function AIManagerPage() {
                   {att.loading ? (
                     <div className="flex items-center justify-center bg-background/50 p-2 h-16 w-32">
                       <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-2" />
-                      <span className="text-[10px] text-muted-foreground truncate">Vectorising…</span>
+                      <span className="text-xs text-muted-foreground truncate">Vectorising…</span>
                     </div>
                   ) : att.type.startsWith('image/') ? (
                     <Image src={att.url} alt={att.name} width={64} height={64} className="h-16 w-16 object-cover" />
                   ) : (
                     <div className="flex items-center gap-1 bg-background/50 p-2 h-16 w-32">
                       <Paperclip className="h-3 w-3 text-muted-foreground shrink-0" />
-                      <span className="text-[10px] text-muted-foreground truncate">{att.name}</span>
+                      <span className="text-xs text-muted-foreground truncate">{att.name}</span>
                     </div>
                   )}
                   {!att.loading && (
@@ -941,6 +940,7 @@ export default function AIManagerPage() {
                     sendMessage()
                   }
                 }}
+                aria-label="Message the AI Manager"
                 placeholder={brain?.configured ? 'Ask AI to manage your ads…' : 'Configure AI brain to start'}
                 disabled={sending || !brain?.configured}
                 className="min-h-[36px] max-h-32 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 px-2 py-2 text-sm"
@@ -951,15 +951,17 @@ export default function AIManagerPage() {
                   variant="destructive"
                   size="icon"
                   onClick={stopSending}
-                  className="shrink-0 h-9 w-9 rounded-xl"
+                  aria-label="Stop generating"
+                  className="shrink-0 h-10 w-10 rounded-xl"
                 >
                   <Square className="h-4 w-4" />
                 </Button>
               ) : (
                 <Button
                   onClick={sendMessage}
+                  aria-label="Send message"
                   disabled={(!input.trim() && pendingAttachments.length === 0) || !brain?.configured}
-                  className="shrink-0 h-9 w-9 rounded-lg p-0"
+                  className="shrink-0 h-10 w-10 rounded-lg p-0"
                 >
                   <Send className="h-4 w-4" />
                 </Button>
@@ -980,7 +982,7 @@ export default function AIManagerPage() {
                   <ShieldAlert className="h-3.5 w-3.5 text-amber-500" />
                 </div>
                 <CardTitle className="text-sm">Pending Approvals</CardTitle>
-                <Badge variant="secondary" className="ml-auto text-[10px]">{approvals.length}</Badge>
+                <Badge variant="secondary" className="ml-auto text-xs">{approvals.length}</Badge>
               </div>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -1046,10 +1048,12 @@ export default function AIManagerPage() {
                   >
                     <span className="truncate flex-1 font-medium">{c.title}</span>
                     <button
+                      type="button"
+                      aria-label={`Delete conversation: ${c.title}`}
                       onClick={(e) => { e.stopPropagation(); deleteConversation(c.id) }}
-                      className="ml-1.5 shrink-0 rounded-md p-1 text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-red-500/10 hover:text-red-500 transition-all"
+                      className="ml-1.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-[var(--status-critical)]/10 hover:text-[var(--status-critical-ink)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(hover:none)]:opacity-100"
                     >
-                      <Trash2 className="h-3 w-3" />
+                      <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 ))
@@ -1073,14 +1077,14 @@ export default function AIManagerPage() {
               {ALL_TOOL_NAMES.slice(0, 18).map((tool) => {
                 const Icon = toolIcons[tool] || Wrench
                 return (
-                  <Badge key={tool} variant="secondary" className="text-[10px] font-mono gap-1 py-0.5">
+                  <Badge key={tool} variant="secondary" className="text-xs font-mono gap-1 py-0.5">
                     <Icon className="h-2.5 w-2.5" />
                     {tool}
                   </Badge>
                 )
               })}
               {ALL_TOOL_NAMES.length > 18 && (
-                <Badge variant="outline" className="text-[10px]">+{ALL_TOOL_NAMES.length - 18} more</Badge>
+                <Badge variant="outline" className="text-xs">+{ALL_TOOL_NAMES.length - 18} more</Badge>
               )}
             </div>
           </CardContent>
@@ -1134,6 +1138,7 @@ export default function AIManagerPage() {
               <Button
                 size="sm"
                 onClick={submitQuestionAnswer}
+                aria-label="Send answer"
                 disabled={!questionAnswer.trim() || submittingAnswer}
                 className=""
               >
@@ -1261,14 +1266,16 @@ function ToolCard({ toolCall, expanded, onToggle }: {
     toolCall.status === 'error' ? 'Failed' : 'Done'
 
   const statusColor =
-    toolCall.status === 'pending' ? 'text-amber-500' :
-    toolCall.status === 'error' ? 'text-red-500' : 'text-emerald-500'
+    toolCall.status === 'pending' ? 'text-amber-700 dark:text-amber-300' :
+    toolCall.status === 'error' ? 'text-[var(--status-critical-ink)] dark:text-red-300' : 'text-[var(--status-good-ink)] dark:text-green-300'
 
   return (
     <div className="rounded-lg border border-border/30 bg-muted/20 overflow-hidden transition-colors hover:border-border/50">
       <button
+        type="button"
         onClick={onToggle}
-        className="flex items-center gap-2 w-full px-3 py-2 text-left transition-colors hover:bg-muted/40"
+        aria-expanded={expanded}
+        className="flex min-h-10 w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         <div className={`flex h-5 w-5 items-center justify-center rounded-md ${statusColor} bg-current/10`}>
           {toolCall.status === 'pending' ? (
@@ -1280,8 +1287,8 @@ function ToolCard({ toolCall, expanded, onToggle }: {
           )}
         </div>
         <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-        <span className="text-xs font-medium">{toolCall.name}</span>
-        <span className={`text-[10px] ml-auto ${statusColor}`}>{statusLabel}</span>
+        <span className="min-w-0 truncate text-xs font-medium" title={toolCall.name}>{humanizeTool(toolCall.name)}</span>
+        <span className={`ml-auto shrink-0 text-xs font-medium ${statusColor}`}>{statusLabel}</span>
         <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${expanded ? 'rotate-180' : ''}`} />
       </button>
 
@@ -1296,20 +1303,20 @@ function ToolCard({ toolCall, expanded, onToggle }: {
             <div className="px-3 py-2.5 space-y-2.5">
               {/* Friendly result summary */}
               {toolCall.error ? (
-                <div className="rounded-md bg-red-500/5 border border-red-500/20 px-2.5 py-2">
-                  <p className="text-[11px] text-red-500">{toolCall.error}</p>
+                <div role="status" className="rounded-md border border-[var(--status-critical)]/25 bg-[var(--status-critical)]/5 px-2.5 py-2">
+                  <p className="text-xs text-[var(--status-critical-ink)] dark:text-red-300">{toolCall.error}</p>
                 </div>
               ) : needsApproval ? (
-                <div className="rounded-md bg-amber-500/5 border border-amber-500/20 px-2.5 py-2 space-y-1">
+                <div className="space-y-1 rounded-md border border-[var(--status-warning)]/30 bg-[var(--status-warning)]/5 px-2.5 py-2">
                   <div className="flex items-center gap-2">
-                    <ShieldAlert className="h-3 w-3 text-amber-500" />
-                    <span className="text-[11px] font-semibold">Needs your approval</span>
+                    <ShieldAlert aria-hidden="true" className="h-3.5 w-3.5 text-amber-700 dark:text-amber-300" />
+                    <span className="text-xs font-semibold">Needs your approval</span>
                   </div>
-                  <p className="text-[11px] text-muted-foreground">{friendlyMessage || 'Spend-affecting action queued.'}</p>
+                  <p className="text-xs text-muted-foreground">{friendlyMessage || 'Spend-affecting action queued.'}</p>
                 </div>
               ) : audioUrl ? (
                 <div className="space-y-1.5">
-                  <p className="text-[11px] text-muted-foreground flex items-center gap-1"><Volume2 className="h-3 w-3" /> {friendlyMessage || 'Voice reply'}</p>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1"><Volume2 className="h-3 w-3" /> {friendlyMessage || 'Voice reply'}</p>
                   <audio controls src={audioUrl} className="w-full h-8" />
                 </div>
               ) : chartSpec ? (
@@ -1322,12 +1329,12 @@ function ToolCard({ toolCall, expanded, onToggle }: {
                 </div>
               ) : imageUrl ? (
                 <div className="space-y-1.5">
-                  <p className="text-[11px] text-muted-foreground">{friendlyMessage || 'Image generated'}</p>
+                  <p className="text-xs text-muted-foreground">{friendlyMessage || 'Image generated'}</p>
                   <Image src={imageUrl} alt="Generated" width={600} height={256} className="rounded-md max-w-full max-h-52 object-cover border border-border/30" />
                 </div>
               ) : friendlyMessage ? (
-                <div className="rounded-md bg-emerald-500/5 border border-emerald-500/20 px-2.5 py-2">
-                  <p className="text-[11px] text-muted-foreground">{friendlyMessage}</p>
+                <div className="rounded-md border border-[var(--status-good)]/25 bg-[var(--status-good)]/5 px-2.5 py-2">
+                  <p className="text-xs text-muted-foreground">{friendlyMessage}</p>
                 </div>
               ) : null}
 
@@ -1335,13 +1342,15 @@ function ToolCard({ toolCall, expanded, onToggle }: {
               {toolCall.result !== undefined && (
                 <div className="pt-1">
                   <button
+                    type="button"
+                    aria-expanded={showRaw}
                     onClick={(e) => { e.stopPropagation(); setShowRaw((v) => !v) }}
-                    className="text-[10px] text-muted-foreground hover:text-primary underline decoration-dashed underline-offset-2"
+                    className="text-xs text-muted-foreground hover:text-primary underline decoration-dashed underline-offset-2"
                   >
                     {showRaw ? 'Hide raw output' : 'Show raw output'}
                   </button>
                   {showRaw && (
-                    <pre className="mt-1.5 text-[10px] bg-muted/60 rounded-md p-2 overflow-x-auto max-h-48 scrollbar-thin border border-border/20">
+                    <pre className="mt-1.5 text-xs bg-muted/60 rounded-md p-2 overflow-x-auto max-h-48 scrollbar-thin border border-border/20">
                       {typeof toolCall.result === 'string'
                         ? toolCall.result
                         : JSON.stringify(toolCall.result, null, 2)}
@@ -1374,7 +1383,11 @@ function BrainDialog({ open, brain, onSave, onOpenChange }: {
 
   const provider = brain?.provider || ''
   const providerName = providerInfo[provider as keyof typeof providerInfo]?.name || provider
-  const models = providerModels[provider] || []
+  const presets = MODEL_PRESETS[provider] || []
+  // The saved model may not be a preset (the field is free text in Settings);
+  // list it anyway so the select never renders blank.
+  const models = presets.some((m) => m.value === model) || !model ? presets : [{ value: model, label: model, note: 'Your saved model.' }, ...presets]
+  const selectedNote = models.find((m) => m.value === model)?.note
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1391,9 +1404,9 @@ function BrainDialog({ open, brain, onSave, onOpenChange }: {
         {provider ? (
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-xs font-medium">Model</label>
+              <label htmlFor="brain-model" className="text-sm font-medium">Model</label>
               <Select value={model} onValueChange={(v) => { if (v) setModel(v) }}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger id="brain-model" className="h-10 w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {models.map((m) => (
                     <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
@@ -1401,14 +1414,15 @@ function BrainDialog({ open, brain, onSave, onOpenChange }: {
                 </SelectContent>
               </Select>
             </div>
-            <p className="text-[11px] text-muted-foreground">
-              Need to change the provider or API key? Go to <button onClick={() => window.location.href = '/settings'} className="text-primary underline">Settings</button>.
+            {selectedNote && <p className="text-xs text-muted-foreground">{selectedNote}</p>}
+            <p className="text-xs text-muted-foreground">
+              Need to change the provider or API key? Go to <Link href="/settings" className="font-medium text-primary underline underline-offset-2">Settings</Link>.
             </p>
           </div>
         ) : (
-          <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-4 text-center">
+          <div className="rounded-lg border border-[var(--status-warning)]/40 bg-[var(--status-warning)]/5 p-4 text-center">
             <p className="text-sm text-muted-foreground mb-3">You need to configure an AI provider first.</p>
-            <Button variant="outline" onClick={() => window.location.href = '/settings'}>
+            <Button variant="outline" render={<Link href="/settings" />} nativeButton={false}>
               Go to Settings
             </Button>
           </div>
@@ -1536,7 +1550,7 @@ function KnowledgeBaseDialog({ open, onOpenChange }: {
 
         <div className="space-y-4">
           {/* Upload area */}
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-2">
               <input
                 ref={fileRef}
@@ -1591,15 +1605,17 @@ function KnowledgeBaseDialog({ open, onOpenChange }: {
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium truncate">{doc.title}</p>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <Badge variant="secondary" className="text-[10px]">{doc.sourceType}</Badge>
-                        <span className="text-[10px] text-muted-foreground">{doc.chunkCount} chunks</span>
+                        <Badge variant="secondary" className="text-xs">{doc.sourceType}</Badge>
+                        <span className="text-xs text-muted-foreground">{doc.chunkCount} chunks</span>
                       </div>
                     </div>
                     <button
+                      type="button"
+                      aria-label={`Delete document: ${doc.title}`}
                       onClick={() => handleDelete(doc.id)}
-                      className="ml-2 text-muted-foreground hover:text-red-500 shrink-0"
+                      className="ml-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-[var(--status-critical)]/10 hover:text-[var(--status-critical-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
                     </button>
                   </div>
                 ))}

@@ -202,7 +202,7 @@ export default function CampaignsPage() {
 function Metric({ label, value }: { label: string; value: string | number }) {
   return (
     <div>
-      <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <dt className="text-xs uppercase tracking-wide text-muted-foreground">{label}</dt>
       <dd className="font-medium tabular">{value}</dd>
     </div>
   )

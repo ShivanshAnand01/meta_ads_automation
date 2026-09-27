@@ -18,10 +18,23 @@ import type { ReactNode } from 'react'
 // ── Formatting ────────────────────────────────────────────────────────────
 
 export function formatCurrency(value: number, currency = 'INR'): string {
-  const symbol = currency === 'INR' ? '₹' : ''
-  if (Math.abs(value) >= 10_000_000) return `${symbol}${(value / 10_000_000).toFixed(2)} Cr`
-  if (Math.abs(value) >= 100_000) return `${symbol}${(value / 100_000).toFixed(2)} L`
-  return `${symbol}${Math.round(value).toLocaleString('en-IN')}`
+  if (currency === 'INR') {
+    // Lakh and crore are how Indian owners read money; keep them.
+    if (Math.abs(value) >= 10_000_000) return `₹${(value / 10_000_000).toFixed(2)} Cr`
+    if (Math.abs(value) >= 100_000) return `₹${(value / 100_000).toFixed(2)} L`
+    return `₹${Math.round(value).toLocaleString('en-IN')}`
+  }
+  // Every other currency previously rendered as a bare number.
+  try {
+    return new Intl.NumberFormat('en', {
+      style: 'currency',
+      currency,
+      notation: Math.abs(value) >= 100_000 ? 'compact' : 'standard',
+      maximumFractionDigits: Math.abs(value) >= 100_000 ? 2 : 0,
+    }).format(value)
+  } catch {
+    return `${currency} ${Math.round(value).toLocaleString('en')}`
+  }
 }
 
 export function formatCompact(value: number): string {
@@ -173,7 +186,7 @@ export function StatTile({
       </p>
 
       {sub && <div className="mt-1 text-xs text-muted-foreground">{sub}</div>}
-      {footnote && <p className="mt-2 text-[11px] leading-snug text-muted-foreground/80">{footnote}</p>}
+      {footnote && <p className="mt-2 text-xs leading-snug text-muted-foreground">{footnote}</p>}
     </div>
   )
 }
@@ -208,7 +221,7 @@ export function PacingBar({
           <span className="text-sm font-semibold tabular">{formatCurrency(spent, currency)}</span>
         </div>
         <div className="h-2 rounded-full bg-muted" />
-        <p className="text-[11px] text-muted-foreground">No cap set — spending is unlimited.</p>
+        <p className="text-xs text-muted-foreground">No cap set — spending is unlimited.</p>
       </div>
     )
   }
@@ -240,7 +253,7 @@ export function PacingBar({
       </div>
 
       {/* The percentage is stated in words as well as colour. */}
-      <p className="text-[11px] text-muted-foreground tabular">
+      <p className="text-xs text-muted-foreground tabular">
         {pct >= 100
           ? `Over cap by ${formatCurrency(spent - cap, currency)}`
           : `${Math.round(pct)}% used · ${formatCurrency(cap - spent, currency)} left`}
