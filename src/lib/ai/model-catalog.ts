@@ -37,6 +37,20 @@ export const MODEL_PRESETS: Record<string, ModelPreset[]> = {
   ],
 }
 
+/**
+ * The low-cost model background specialists (Watcher, past-ads analyst) run
+ * on, so a check every two hours costs little. Providers not listed keep the
+ * business's own model.
+ */
+export const ECONOMY_MODELS: Record<string, string> = {
+  openai: 'gpt-5.4-mini',
+  anthropic: 'claude-haiku-4-5',
+}
+
+export function modelForTier(provider: string, ownerModel: string, tier: 'owner' | 'economy'): string {
+  return tier === 'economy' ? ECONOMY_MODELS[provider] ?? ownerModel : ownerModel
+}
+
 export function defaultModelFor(provider: string): string {
   return MODEL_PRESETS[provider]?.[0]?.value ?? ''
 }

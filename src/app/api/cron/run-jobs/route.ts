@@ -1,8 +1,9 @@
-import crypto from 'node:crypto'
 import { createSupabaseServiceClient } from '@/lib/supabase/server'
 import { withServiceClient, db } from '@/lib/db/supabase-db'
 import { runRoutine, type Routine } from '@/lib/ai/autonomous'
 import { CronExpressionParser } from 'cron-parser'
+import { isMachineAuthorized } from '@/lib/cron-auth'
+import { kickAgentQueue } from '@/lib/ai/agents/runner'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -23,30 +24,6 @@ export const dynamic = 'force-dynamic'
 
 /** Jobs processed per tick. Keeps one invocation inside maxDuration. */
 const MAX_JOBS_PER_TICK = 8
-
-function constantTimeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false
-  try {
-    return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b))
-  } catch {
-    return false
-  }
-}
-
-function isAuthorized(request: Request): boolean {
-  // Vercel Cron signs its requests with CRON_SECRET as a bearer token.
-  const cronSecret = process.env.CRON_SECRET
-  const auth = request.headers.get('authorization') || ''
-  if (cronSecret && auth === `Bearer ${cronSecret}`) return true
-
-  // The runner secret also works, for manual triggering and the Supabase edge
-  // function path.
-  const runnerSecret = process.env.RUNNER_SECRET
-  const header = request.headers.get('x-runner-secret') || ''
-  if (runnerSecret && runnerSecret.length > 0 && constantTimeEqual(header, runnerSecret)) return true
-
-  return false
-}
 
 function parseJobConfig(raw: unknown): { prompt?: string } {
   if (!raw) return {}
@@ -73,7 +50,7 @@ function nextRunFrom(cronExpression?: string | null): Date {
 }
 
 async function handle(request: Request): Promise<Response> {
-  if (!isAuthorized(request)) {
+  if (!isMachineAuthorized(request)) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -131,6 +108,10 @@ async function handle(request: Request): Promise<Response> {
         })
       }
     }
+
+    // Background specialist runs queued since the last tick get their own
+    // invocation, so they do not share this one's time budget.
+    await kickAgentQueue()
 
     return Response.json({
       ranAt: now.toISOString(),

@@ -1,4 +1,15 @@
-import type { AIProvider, ChatMessage, ToolCall, ToolDefinition, ProviderStreamEvent } from '../types'
+import type { AIProvider, ChatMessage, ToolCall, ToolDefinition, ProviderStreamEvent, TokenUsage, UsageReporter } from '../types'
+
+/** OpenAI's `usage` object, as returned on completions and the last stream chunk. */
+export function parseOpenAIUsage(usage: unknown): TokenUsage | null {
+  const u = usage as { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } } | null
+  if (!u || typeof u.prompt_tokens !== 'number') return null
+  return {
+    inputTokens: u.prompt_tokens,
+    cachedInputTokens: u.prompt_tokens_details?.cached_tokens ?? 0,
+    outputTokens: u.completion_tokens ?? 0,
+  }
+}
 
 function toOpenAIMessage(m: ChatMessage): Record<string, unknown> {
   const msg: Record<string, unknown> = { role: m.role }
@@ -81,10 +92,17 @@ export class OpenAIProvider implements AIProvider {
   name = 'openai'
   private apiKey: string
   private model: string
+  private reportUsage?: UsageReporter
 
-  constructor(apiKey: string, model: string = 'gpt-5.4-mini') {
+  constructor(apiKey: string, model: string = 'gpt-5.4-mini', reportUsage?: UsageReporter) {
     this.apiKey = apiKey
     this.model = model
+    this.reportUsage = reportUsage
+  }
+
+  private async report(usage: TokenUsage | null): Promise<void> {
+    if (!usage || !this.reportUsage) return
+    try { await this.reportUsage(this.model, usage) } catch { /* metering must never break a call */ }
   }
 
   isAvailable(): boolean {
@@ -102,6 +120,7 @@ export class OpenAIProvider implements AIProvider {
     if (!response.ok) throw await openAIError(response)
 
     const data = await response.json()
+    await this.report(parseOpenAIUsage(data.usage))
     return data.choices?.[0]?.message?.content || ''
   }
 
@@ -116,12 +135,15 @@ export class OpenAIProvider implements AIProvider {
       if (m.role !== 'tool') reqMessages.push(toOpenAIMessage(m))
     }
 
-    const response = await postChat(this.apiKey, this.model, { messages: reqMessages, temperature: 0.7, stream: true }, signal)
+    const response = await postChat(this.apiKey, this.model, {
+      messages: reqMessages, temperature: 0.7, stream: true, stream_options: { include_usage: true },
+    }, signal)
     if (!response.ok || !response.body) throw await openAIError(response)
 
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
+    let usage: TokenUsage | null = null
 
     while (true) {
       const { done, value } = await reader.read()
@@ -133,14 +155,19 @@ export class OpenAIProvider implements AIProvider {
         const trimmed = line.trim()
         if (!trimmed.startsWith('data:')) continue
         const data = trimmed.slice(5).trim()
-        if (!data || data === '[DONE]') return
+        if (!data || data === '[DONE]') {
+          await this.report(usage)
+          return
+        }
         try {
           const json = JSON.parse(data)
+          usage = parseOpenAIUsage(json.usage) ?? usage
           const delta = json.choices?.[0]?.delta?.content
           if (typeof delta === 'string' && delta) yield delta
         } catch {}
       }
     }
+    await this.report(usage)
   }
 
   async *streamChatWithTools(
@@ -160,6 +187,7 @@ export class OpenAIProvider implements AIProvider {
       tool_choice: 'auto',
       temperature: 0.7,
       stream: true,
+      stream_options: { include_usage: true },
     }, signal)
     if (!response.ok || !response.body) throw await openAIError(response)
 
@@ -168,8 +196,22 @@ export class OpenAIProvider implements AIProvider {
     let buffer = ''
     const toolCallAccumulator: Map<number, { id: string; name: string; argsBuffer: string }> = new Map()
     let hasToolCalls = false
+    let toolCallsEmitted = false
+    let usage: TokenUsage | null = null
 
-    while (true) {
+    const collectToolCalls = (): ToolCall[] => {
+      const toolCalls: ToolCall[] = []
+      for (const [, tc] of toolCallAccumulator) {
+        let args: Record<string, unknown> = {}
+        try { args = JSON.parse(tc.argsBuffer || '{}') } catch {}
+        toolCalls.push({ id: tc.id, name: tc.name, arguments: args })
+      }
+      return toolCalls
+    }
+
+    // The usage chunk arrives AFTER the chunk carrying finish_reason, so the
+    // stream is read to [DONE] and `done` is only emitted once usage is in.
+    streamLoop: while (true) {
       const { done, value } = await reader.read()
       if (done) break
       buffer += decoder.decode(value, { stream: true })
@@ -180,21 +222,10 @@ export class OpenAIProvider implements AIProvider {
         const trimmed = line.trim()
         if (!trimmed.startsWith('data:')) continue
         const data = trimmed.slice(5).trim()
-        if (!data || data === '[DONE]') {
-          if (hasToolCalls) {
-            const toolCalls: ToolCall[] = []
-            for (const [, tc] of toolCallAccumulator) {
-              let args: Record<string, unknown> = {}
-              try { args = JSON.parse(tc.argsBuffer || '{}') } catch {}
-              toolCalls.push({ id: tc.id, name: tc.name, arguments: args })
-            }
-            yield { type: 'tool_calls', toolCalls }
-          }
-          yield { type: 'done' }
-          return
-        }
+        if (!data || data === '[DONE]') break streamLoop
         try {
           const json = JSON.parse(data)
+          usage = parseOpenAIUsage(json.usage) ?? usage
           const delta = json.choices?.[0]?.delta
           const finishReason = json.choices?.[0]?.finish_reason
 
@@ -219,22 +250,16 @@ export class OpenAIProvider implements AIProvider {
             }
           }
 
-          if (finishReason === 'tool_calls' || finishReason === 'stop') {
-            if (hasToolCalls) {
-              const toolCalls: ToolCall[] = []
-              for (const [, tc] of toolCallAccumulator) {
-                let args: Record<string, unknown> = {}
-                try { args = JSON.parse(tc.argsBuffer || '{}') } catch {}
-                toolCalls.push({ id: tc.id, name: tc.name, arguments: args })
-              }
-              yield { type: 'tool_calls', toolCalls }
-            }
-            yield { type: 'done' }
-            return
+          if ((finishReason === 'tool_calls' || finishReason === 'stop') && hasToolCalls && !toolCallsEmitted) {
+            toolCallsEmitted = true
+            yield { type: 'tool_calls', toolCalls: collectToolCalls() }
           }
         } catch {}
       }
     }
+
+    if (hasToolCalls && !toolCallsEmitted) yield { type: 'tool_calls', toolCalls: collectToolCalls() }
+    await this.report(usage)
     yield { type: 'done' }
   }
 

@@ -32,6 +32,9 @@ export const SAFE_TOOLS = new Set([
   'generate_ad_image', 'generate_creative_with_image',
   // Connected research is read-only; listing tools is metadata
   'research_web', 'list_connected_tools',
+  // Hands work to a specialist. It spends AI credit only (capped per run and
+  // recorded in ai_usage); every tool the specialist calls is gated on its own.
+  'delegate_to_agent',
   // Scheduling metadata only; the routine itself is guardrailed when it runs
   'list_scheduled_jobs', 'create_scheduled_job', 'update_scheduled_job', 'delete_scheduled_job',
 ])
@@ -99,4 +102,23 @@ export const ALWAYS_APPROVE = new Set([
 
 export function requiresApprovalAlways(tool: string): boolean {
   return ALWAYS_APPROVE.has(tool)
+}
+
+/**
+ * The approval gate's one decision: may this call run now, or must it queue?
+ *
+ * A specialist never runs an approval tool directly, whatever auto-optimize
+ * says — auto-optimize is the owner trusting the AI Manager, not its team.
+ * (Its allow-list keeps such tools away from it in the first place; this is
+ * the second barrier.)
+ */
+export function mayExecuteWithoutApproval(params: {
+  tool: string
+  autoOptimize: boolean
+  autoApproved?: boolean
+  actor?: string
+}): boolean {
+  if (requiresApprovalAlways(params.tool)) return false
+  if (params.actor?.startsWith('specialist:')) return SAFE_TOOLS.has(params.tool)
+  return Boolean(params.autoApproved) || !needsApproval(params.tool, params.autoOptimize)
 }

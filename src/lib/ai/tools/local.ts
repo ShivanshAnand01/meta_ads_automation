@@ -2,6 +2,7 @@ import { db } from '@/lib/db/supabase-db'
 import { getScopedSupabase } from '@/lib/db/supabase-db'
 import type { AIProvider, AIProviderType } from '@/lib/ai/types'
 import { generateAdImage } from '@/lib/ai/image-generator'
+import { recordImageUsage, type UsageMeter } from '@/lib/ai/usage'
 import { persistGeneratedImage } from '@/lib/ai/image-store'
 import { retrieveRelevant, trackGeneratedImage } from '@/lib/ai/rag'
 import { getStrategy, updateStrategy, buildStrategyContext } from '@/lib/ai/strategy'
@@ -34,6 +35,8 @@ export interface LocalToolContext {
   whisperKey?: string | null
   ttsKey?: string | null
   provider?: AIProvider
+  /** Who image generations are billed to; defaults to this user with source "image". */
+  meter?: UsageMeter
   /** SSE event sender — used by ask_user_question to stream the question to the client. */
   sendEvent?: (event: Record<string, unknown>) => void
 }
@@ -347,6 +350,7 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
         brandColors: Array.isArray(args.brandColors) ? (args.brandColors as string[]) : (promptProfile.brandColors.length ? promptProfile.brandColors : undefined),
         negativePrompt: (args.negativePrompt as string) || undefined,
       })
+      await recordImageUsage(ctx.meter ?? { userId, source: 'image' }, result)
       if (!result.success || !result.imageUrl) return { error: result.error || 'Image generation failed' }
       const saved = await persistGeneratedImage(result.imageUrl, userId)
       if (!saved) return { error: 'The image was drawn but could not be saved to storage. Try again.' }
@@ -410,6 +414,7 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
         brandColors: Array.isArray(args.brandColors) ? (args.brandColors as string[]) : (profile.brandColors.length ? profile.brandColors : undefined),
         negativePrompt: (args.negativePrompt as string) || undefined,
       })
+      await recordImageUsage(ctx.meter ?? { userId, source: 'image' }, imgResult)
       let imageUrl: string | null = null
       if (imgResult.success && imgResult.imageUrl) {
         const saved = await persistGeneratedImage(imgResult.imageUrl, userId)

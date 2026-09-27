@@ -56,7 +56,7 @@ export async function POST(request: Request) {
       apiKey: settings.apiKey || undefined,
       model: settings.model,
       baseUrl: settings.baseUrl || undefined,
-    })
+    }, { userId, source: 'creative:suggest' })
 
     const creativeData: AdCreativeData = {
       title: creative.title as string,

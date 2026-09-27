@@ -292,4 +292,7 @@ export const db = {
   dailyMetric: model('daily_metrics'),
   pendingApproval: model('pending_approvals'),
   integration: model('integrations'),
+  agentRun: model('agent_runs'),
+  creativePlaybook: model('creative_playbook'),
+  aiUsage: model('ai_usage'),
 }

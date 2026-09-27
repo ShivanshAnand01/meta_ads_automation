@@ -28,7 +28,7 @@ export async function runReflection(params: {
     apiKey: settings.apiKey || undefined,
     model: settings.model,
     baseUrl: settings.baseUrl || undefined,
-  })
+  }, { userId, source: 'reflection' })
 
   const embed: EmbedConfig = {
     provider: settings.provider as AIProviderType,

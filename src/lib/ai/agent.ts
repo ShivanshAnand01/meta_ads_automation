@@ -94,22 +94,35 @@ function stripNoteBlocks(text: string): string {
 
 const MAX_ROUNDS = 10
 
+/**
+ * How a caller other than the AI Manager runs this same loop: a specialist
+ * brings its own instructions and a round limit, and never gets a second loop.
+ */
+export interface AgentLoopOptions {
+  /** Replaces the AI Manager's system prompt. */
+  basePrompt?: string
+  maxRounds?: number
+  signal?: AbortSignal
+}
+
 export async function* streamAgentMessage(
   provider: AIProvider,
   messages: ChatMessage[],
   tools: ToolDefinition[],
   toolExecutor: (tool: string, args: Record<string, unknown>) => Promise<unknown>,
   signal?: AbortSignal,
-  systemContext?: string
+  systemContext?: string,
+  options?: AgentLoopOptions,
 ): AsyncGenerator<AgentStreamEvent, AgentResult, unknown> {
   const allToolCalls: ToolCall[] = []
   const allToolResults: ToolResult[] = []
   const allNotes: AgentNote[] = []
   let fullResponse = ''
 
-  const fullPrompt = systemContext ? `${AGENT_SYSTEM_PROMPT}\n\n${systemContext}` : AGENT_SYSTEM_PROMPT
+  const basePrompt = options?.basePrompt ?? AGENT_SYSTEM_PROMPT
+  const fullPrompt = systemContext ? `${basePrompt}\n\n${systemContext}` : basePrompt
 
-  for (let round = 0; round < MAX_ROUNDS; round++) {
+  for (let round = 0; round < (options?.maxRounds ?? MAX_ROUNDS); round++) {
     if (signal?.aborted) break
 
     yield { type: 'thinking', phase: round === 0 ? 'reasoning' : 'analyzing' }
@@ -201,19 +214,23 @@ export async function processAgentMessage(
   messages: ChatMessage[],
   tools: ToolDefinition[],
   toolExecutor: (tool: string, args: Record<string, unknown>) => Promise<unknown>,
-  systemContext?: string
+  systemContext?: string,
+  options?: AgentLoopOptions,
 ): Promise<AgentResult> {
-  const fullPrompt = systemContext ? `${AGENT_SYSTEM_PROMPT}\n\n${systemContext}` : AGENT_SYSTEM_PROMPT
+  const basePrompt = options?.basePrompt ?? AGENT_SYSTEM_PROMPT
+  const fullPrompt = systemContext ? `${basePrompt}\n\n${systemContext}` : basePrompt
+  const signal = options?.signal
   const allToolCalls: ToolCall[] = []
   const allToolResults: ToolResult[] = []
   const allNotes: AgentNote[] = []
   let fullResponse = ''
 
-  for (let round = 0; round < MAX_ROUNDS; round++) {
+  for (let round = 0; round < (options?.maxRounds ?? MAX_ROUNDS); round++) {
+    if (signal?.aborted) break
     let textBuffer = ''
     let toolCallsInRound: ToolCall[] = []
 
-    for await (const ev of provider.streamChatWithTools(messages, fullPrompt, tools)) {
+    for await (const ev of provider.streamChatWithTools(messages, fullPrompt, tools, signal)) {
       if (ev.type === 'text') {
         textBuffer += ev.text
       } else if (ev.type === 'tool_calls') {

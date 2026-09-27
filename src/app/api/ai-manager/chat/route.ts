@@ -211,7 +211,7 @@ export async function POST(request: Request) {
       apiKey: settings.apiKey || undefined,
       model: settings.model,
       baseUrl: settings.baseUrl || undefined,
-    })
+    }, { userId, source: 'chat' })
 
     // Build rich context: connection status + strategy + memory + RAG
     const conn = await getMetaConnection(userId)

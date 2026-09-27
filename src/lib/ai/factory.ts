@@ -3,19 +3,22 @@ import { OllamaProvider } from './providers/ollama'
 import { OpenAIProvider } from './providers/openai'
 import { GroqProvider } from './providers/groq'
 import { AnthropicProvider } from './providers/anthropic'
+import { usageReporter, type UsageMeter } from './usage'
 
 export function createAIProvider(
   type: AIProviderType,
-  config: { apiKey?: string; model?: string; baseUrl?: string }
+  config: { apiKey?: string; model?: string; baseUrl?: string },
+  /** Bills every call to a business and source. Groq and Ollama do not report usage yet. */
+  meter?: UsageMeter,
 ): AIProvider {
   switch (type) {
     case 'anthropic':
       if (!config.apiKey) throw new Error('Anthropic API key is required')
-      return new AnthropicProvider(config.apiKey, config.model || 'claude-sonnet-5')
+      return new AnthropicProvider(config.apiKey, config.model || 'claude-sonnet-5', usageReporter(meter, 'anthropic'))
 
     case 'openai':
       if (!config.apiKey) throw new Error('OpenAI API key is required')
-      return new OpenAIProvider(config.apiKey, config.model || 'gpt-4.1-mini')
+      return new OpenAIProvider(config.apiKey, config.model || 'gpt-4.1-mini', usageReporter(meter, 'openai'))
 
     case 'groq':
       if (!config.apiKey) throw new Error('Groq API key is required')

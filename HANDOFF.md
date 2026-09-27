@@ -17,7 +17,7 @@ Owner: Shivansh (ceo.realtooth@gmail.com). He judges the tool by whether a non-t
 | Live | https://meta-ads-platform-two.vercel.app |
 | Repo (local) | `C:\Users\SHIVANSH\meta-ads-platform` — GitHub `ShivanshAnand01/meta_ads_automation`, branch `master`, **public** |
 | Vercel | project `meta-ads-platform`, team `shivansh-s-projects14`, **Hobby plan**, region `bom1`. Push to `master` auto-deploys (git webhook works). Token for CLI in `~/command-center-brain/.env` as `VERCEL_TOKEN` (same account; use `npx vercel@latest … --token=$VERCEL_TOKEN --scope=shivansh-s-projects14`). |
-| Supabase | project `mnepghtodhjdxtmcihls` ("Meta Ads Automation", ap-southeast-1). Migrations `0001`–`0006` applied (see DEPLOYMENT.md for how). The Supabase MCP's direct-Postgres tools sometimes fail with `28P01 password authentication failed` — that is the MCP tool's credential, not the app; use the REST API with `SUPABASE_SERVICE_ROLE_KEY` from `.env.local`, or `pg` via `DIRECT_URL`. |
+| Supabase | project `mnepghtodhjdxtmcihls` ("Meta Ads Automation", ap-southeast-1). Migrations `0001`–`0007` applied (see DEPLOYMENT.md for how). The Supabase MCP's direct-Postgres tools sometimes fail with `28P01 password authentication failed` — that is the MCP tool's credential, not the app; use the REST API with `SUPABASE_SERVICE_ROLE_KEY` from `.env.local`, or `pg` via `DIRECT_URL`. |
 | Docs in repo | `README.md`, `DEPLOYMENT.md`, this file, `MULTI-AGENT-PROMPT.md`, diagrams in `docs/` |
 | Verify | `npm run typecheck && npm run lint && npm test && npm run build` — all green at commit `4cf2f45`. Tests: 53, run under tsx. |
 | Live read-only check | `npx tsx --env-file=.env.local scripts/smoke-meta-readonly.ts` — 21/21 pass; exercises Graph, MCP spawn, and MCP→Graph fallback against the real account with zero spend. |
@@ -40,7 +40,7 @@ User `ef47db24-ea14-4d0e-b9a5-9036b052921a`, ad account **act_1316138380606285 "
 
 **Verified earlier, through the app's own code:** connection + Vault, profile injection, Graph reads (campaigns, ad sets, ads, pages, pixels, insights, geo/locale search), MCP spawn per user with the user's env, MCP→Graph fallback routing (`via` field), token validation. Multi-tenant onboarding tools exist and typecheck.
 
-**Never exercised against Meta:** the **write path** — `create_campaign`, `create_ad_set`, `create_ad_creative`, `create_ad`, `publish_full_campaign`. MCP argument adaptation for these is unit-tested (`src/lib/meta/mcp-args.ts`, 14 tests: budgets major→minor units, `status`→`configured_status`, `location_types` injected, `end_time`→`stop_time`, CTA string→object) but has not hit a live account. `ingest_website` has never run. The multi-agent system is not built. Cron is once daily (Hobby limit; `30 0 * * *` = 06:00 IST).
+**Never exercised against Meta:** the **write path** — `create_campaign`, `create_ad_set`, `create_ad_creative`, `create_ad`, `publish_full_campaign`. MCP argument adaptation for these is unit-tested (`src/lib/meta/mcp-args.ts`, 14 tests: budgets major→minor units, `status`→`configured_status`, `location_types` injected, `end_time`→`stop_time`, CTA string→object) but has not hit a live account. `ingest_website` has never run. The multi-agent system is at Phase 1 (framework + Research agent), below. Cron is once daily (Hobby limit; `30 0 * * *` = 06:00 IST).
 
 ## Mistakes already made — do not repeat
 
@@ -69,7 +69,9 @@ User `ef47db24-ea14-4d0e-b9a5-9036b052921a`, ad account **act_1316138380606285 "
 7. **Script compositing** for images (headline, price and CTA rendered in code with Noto Sans Devanagari; diffusion cannot render Indic scripts).
 8. Vercel Pro (hourly pacing), a staging Supabase project, make the repo private, custom domain, Sentry. The landing page is on hold by the owner's decision.
 
-**Multi-agent plan (agreed 2026-09-26, diagram in `docs/admanager-agents.html`, build brief in `MULTI-AGENT-PROMPT.md`):** one Brain (the existing AI Manager) delegating to five specialists: past-ads analyst, research agent (uses Connections), creative generator, watcher (runs on the heartbeat), editor. All read and write shared memory. Not built yet; Connections is the first piece.
+**Multi-agent plan (agreed 2026-09-26, diagram in `docs/admanager-agents.html`, build brief in `MULTI-AGENT-PROMPT.md`):** one Brain (the existing AI Manager) delegating to five specialists: past-ads analyst, research agent (uses Connections), creative generator, watcher (runs on the heartbeat), editor. All read and write shared memory.
+
+**Phase 1 shipped 2026-09-27:** `src/lib/ai/agents/` — `registry.ts` (one config per specialist; only `research` is enabled, the others switch on in their phase), `specialist.ts` (allow-list gate + report validation, tested), `runner.ts` (runs a specialist through the same agent loop and `executeTool`, stores the run in `agent_runs`, writes findings to memory, per-run cost cap, background queue). The Brain calls `delegate_to_agent`. Specialists have no spend tools, and `mayExecuteWithoutApproval` queues any approval tool from a specialist even with auto-optimize on. Every paid AI call is metered into `ai_usage` (`src/lib/ai/usage.ts`, prices in `pricing.ts`); the developer view is `/admin/costs` (gated by `DEVELOPER_EMAILS`). Live run: Research agent, 19.6 s, $0.0105. Next: Phase 2 (Watcher + Creative generator).
 
 **Open question that decides step 3 vs 4 first:** does this business (and the ones he'll onboard) close via website checkout (→ Pixel-driven Sales path) or via WhatsApp/DM conversation (→ Leads path first)? Ask him.
 

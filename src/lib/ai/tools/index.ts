@@ -1,6 +1,6 @@
 import { executeLocalTool, type LocalToolContext } from './local'
 import { logAction } from '@/lib/ai/audit'
-import { needsApproval, classifyRisk, requiresApprovalAlways } from '@/lib/ai/guardrails'
+import { classifyRisk, mayExecuteWithoutApproval } from '@/lib/ai/guardrails'
 import { checkBudget } from '@/lib/ai/budget-guard'
 import { getStrategy } from '@/lib/ai/strategy'
 import { db } from '@/lib/db/supabase-db'
@@ -24,7 +24,7 @@ export interface ToolExecutionContext {
   userId: string
   conversationId?: string
   local: LocalToolContext
-  actor?: 'agent' | 'autonomous'
+  actor?: 'agent' | 'autonomous' | `specialist:${string}`
   /** When true (autonomous + autoOptimize), approval tools execute directly. */
   autoApproved?: boolean
 }
@@ -99,10 +99,7 @@ export async function executeTool(
   }
 
   // ── 2. Approval gate (fails closed) ──────────────────────────────────
-  const mustAlwaysApprove = requiresApprovalAlways(tool)
-  const allowExecute = mustAlwaysApprove
-    ? false
-    : ctx.autoApproved || !needsApproval(tool, autoOptimize)
+  const allowExecute = mayExecuteWithoutApproval({ tool, autoOptimize, autoApproved: ctx.autoApproved, actor: ctx.actor })
 
   if (!allowExecute) {
     const risk = classifyRisk(tool)
@@ -146,7 +143,16 @@ export async function executeTool(
   let result: unknown
   let status = 'success'
   try {
-    if (LOCAL_TOOL_NAMES.has(tool)) {
+    if (tool === 'delegate_to_agent') {
+      // Only the AI Manager delegates. A specialist asking to is refused here
+      // as well as by its own allow-list.
+      if (ctx.actor?.startsWith('specialist:')) {
+        result = { error: 'Specialists cannot delegate to other agents.', refused: true }
+      } else {
+        const { delegateToAgent } = await import('@/lib/ai/agents/runner')
+        result = await delegateToAgent({ userId, conversationId }, args)
+      }
+    } else if (LOCAL_TOOL_NAMES.has(tool)) {
       result = await executeLocalTool(tool, args, local)
     } else if (META_OP_TOOLS.has(tool)) {
       result = await executeMetaOp(tool, args, userId)

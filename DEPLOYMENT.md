@@ -49,6 +49,9 @@ Set in Vercel → Settings → Environment Variables (Production, Preview, Devel
 | `NEXT_PUBLIC_ALLOW_SIGNUP` | `true`. This is a multi-tenant SaaS: any business signs up and brings its own Meta app. (Baked in at build time — a change needs a redeploy.) |
 | `IMAGE_FALLBACK_ENABLED` | `true` allows the free Pollinations image provider. Set `false` for client work — it has no SLA, no moderation and no commercial licence |
 | `NEXT_TELEMETRY_DISABLED` | `1` |
+| `DEVELOPER_EMAILS` | Comma-separated emails that may open `/admin/costs` (running cost across all businesses). Unset = nobody |
+| `AGENT_RUN_COST_CAP_USD` | Optional. Hard stop for one specialist run's AI spend; default `0.5` |
+| `APP_URL` | Optional. Where the app kicks its own agent queue; defaults to Vercel's production domain |
 
 ## Database migrations
 
@@ -73,9 +76,12 @@ SQL editor:
   DEFINER functions that take a user id and guards each with
   `caller_may_act_for()`, which closed cross-tenant reads of the action log,
   memory, knowledge base and strategy through the public anon key.
+- `0007_agents_and_usage.sql` — `agent_runs` (every specialist run, and the
+  background queue), `creative_playbook` (what won and lost, with evidence) and
+  `ai_usage` (one row per paid AI call with tokens and USD cost).
 
-All six are applied to the live database (0001–0002 on 2026-08-30, 0003 on
-2026-09-05, 0004–0006 on 2026-09-27).
+All seven are applied to the live database (0001–0002 on 2026-08-30, 0003 on
+2026-09-05, 0004–0007 on 2026-09-27).
 
 The SQL editor works, and so does the Prisma CLI against `DIRECT_URL` (it
 reads `prisma.config.ts`):
@@ -128,6 +134,14 @@ are harmless.
   A `401` means the secret is wrong.
 
 Keep the secret in the scheduler's credential store, never in the URL.
+
+### Agent queue
+
+Background specialist runs wait in `agent_runs` as `queued`. `POST
+/api/cron/agent-queue` (same secrets) answers `202` at once and works through
+the queue after responding, for up to 300 s. The app kicks it itself when the
+AI Manager queues a run, and `run-jobs` kicks it on every tick, so the heartbeat
+also drains anything left behind.
 
 ## Health check
 

@@ -782,7 +782,7 @@ $$;
 -- incremental changes now live in supabase/migrations/ so an existing
 -- deployment can be upgraded without a reset. Apply them in order:
 --
---   supabase/migrations/0001_ads_delivery_layer.sql … 0006_lock_definer_functions.sql
+--   supabase/migrations/0001_ads_delivery_layer.sql … 0007_agents_and_usage.sql
 --
 -- 0006 revokes `anon` from every SECURITY DEFINER function that takes a user
 --      id and guards each with caller_may_act_for(); see that file.

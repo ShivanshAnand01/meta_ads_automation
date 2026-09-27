@@ -3,6 +3,7 @@ import { requireUserId, handleError } from '@/lib/supabase/server'
 import { createAIProvider } from '@/lib/ai/factory'
 import { generateCreativeSuggestion, generateMultipleCreativeSuggestions } from '@/lib/ai/creative-generator'
 import { generateAdImage, type AspectRatio } from '@/lib/ai/image-generator'
+import { recordImageUsage } from '@/lib/ai/usage'
 import { persistGeneratedImage } from '@/lib/ai/image-store'
 import { resolveSecrets, SECRET_KEYS } from '@/lib/secrets'
 import { enforceRateLimit } from '@/lib/rate-limit'
@@ -83,7 +84,7 @@ export async function POST(request: Request) {
       apiKey: settings.apiKey || undefined,
       model: settings.model,
       baseUrl: settings.baseUrl || undefined,
-    })
+    }, { userId, source: 'creative:generate' })
 
     // Image generation always uses an OpenAI key, whichever provider writes
     // the copy.
@@ -110,6 +111,7 @@ export async function POST(request: Request) {
               aspectRatio: ratio,
               brandColors,
             })
+            await recordImageUsage({ userId, source: 'creative:generate' }, result)
             if (!result.success || !result.imageUrl) {
               warnings.push(`Image for "${s.title}" failed: ${result.error || 'unknown error'}`)
               return { url: null as string | null, provider: result.provider }

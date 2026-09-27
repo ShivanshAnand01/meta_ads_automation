@@ -1,7 +1,10 @@
+import type { TokenUsage } from './types'
 import type { AIProviderType } from './types'
 
 export interface ImageGenResult {
   success: boolean
+  /** Tokens OpenAI billed for the image, when it reported them. */
+  usage?: TokenUsage
   imageUrl: string
   provider: string
   error?: string
@@ -176,6 +179,9 @@ async function generateViaGptImage(
 
   const data = await response.json()
   const b64 = data.data?.[0]?.b64_json
+  const usage: TokenUsage | undefined = typeof data.usage?.input_tokens === 'number'
+    ? { inputTokens: data.usage.input_tokens, outputTokens: data.usage.output_tokens ?? 0 }
+    : undefined
   if (!b64) throw new Error('GPT image returned no image data')
 
   const [w, h] = size.split('x').map(Number)
@@ -183,6 +189,7 @@ async function generateViaGptImage(
     success: true,
     imageUrl: `data:image/png;base64,${b64}`,
     provider: 'gpt-image-1',
+    usage,
     promptUsed: enhancedPrompt,
     aspectRatio: options?.aspectRatio,
     width: w,

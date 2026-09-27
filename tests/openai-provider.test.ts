@@ -54,3 +54,31 @@ test('review status: one vocabulary, legacy spellings still read correctly', () 
   assert.equal(normalizeReview(null), 'pending')
   assert.equal(isApproved('pending'), false)
 })
+
+test('streamed tool calls still arrive once, and usage (sent after finish_reason) is reported', async () => {
+  const chunks = [
+    { choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_1', function: { name: 'research_web', arguments: '{"query":' } }] } }] },
+    { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '"pune"}' } }] } }] },
+    { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+    { choices: [], usage: { prompt_tokens: 1200, completion_tokens: 40, prompt_tokens_details: { cached_tokens: 1000 } } },
+  ]
+  const sse = chunks.map((c) => `data: ${JSON.stringify(c)}\n\n`).join('') + 'data: [DONE]\n\n'
+  let sentBody: Record<string, unknown> = {}
+  globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+    sentBody = JSON.parse(String(init?.body ?? '{}'))
+    return new Response(sse, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+  }) as typeof fetch
+
+  const reported: Array<{ model: string; usage: unknown }> = []
+  const p = new OpenAIProvider('k', 'gpt-5.4-mini', (model, usage) => { reported.push({ model, usage }) })
+  const events: string[] = []
+  let toolArgs: unknown
+  for await (const ev of p.streamChatWithTools([{ role: 'user', content: 'hi' }], 'sys', [])) {
+    events.push(ev.type)
+    if (ev.type === 'tool_calls') toolArgs = ev.toolCalls[0].arguments
+  }
+  assert.deepEqual(events, ['tool_calls', 'done'])
+  assert.deepEqual(toolArgs, { query: 'pune' })
+  assert.deepEqual((sentBody.stream_options as Record<string, unknown>)?.include_usage, true)
+  assert.deepEqual(reported, [{ model: 'gpt-5.4-mini', usage: { inputTokens: 1200, cachedInputTokens: 1000, outputTokens: 40 } }])
+})

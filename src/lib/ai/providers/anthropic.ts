@@ -1,4 +1,4 @@
-import type { AIProvider, ChatMessage, ContentPart, ToolCall, ToolDefinition, ProviderStreamEvent } from '../types'
+import type { AIProvider, ChatMessage, ContentPart, ToolCall, ToolDefinition, ProviderStreamEvent, TokenUsage, UsageReporter } from '../types'
 
 function toAnthropicContent(content: string | ContentPart[]) {
   if (typeof content === 'string') return content
@@ -57,14 +57,40 @@ function toAnthropicTools(tools: ToolDefinition[]) {
   }))
 }
 
+function anthropicUsage(u: unknown): TokenUsage | null {
+  const x = u as { input_tokens?: number; cache_read_input_tokens?: number; output_tokens?: number } | null
+  if (!x || typeof x.input_tokens !== 'number') return null
+  const cached = x.cache_read_input_tokens ?? 0
+  return { inputTokens: x.input_tokens + cached, cachedInputTokens: cached, outputTokens: x.output_tokens ?? 0 }
+}
+
+/** Input tokens arrive on message_start; the running output count on message_delta. */
+class AnthropicUsageTracker {
+  private usage: TokenUsage | null = null
+  observe(json: { type?: string; message?: { usage?: unknown }; usage?: { output_tokens?: number } }): void {
+    if (json.type === 'message_start') this.usage = anthropicUsage(json.message?.usage)
+    else if (json.type === 'message_delta' && this.usage && typeof json.usage?.output_tokens === 'number') {
+      this.usage.outputTokens = json.usage.output_tokens
+    }
+  }
+  total(): TokenUsage | null { return this.usage }
+}
+
 export class AnthropicProvider implements AIProvider {
   name = 'anthropic'
   private apiKey: string
   private model: string
+  private reportUsage?: UsageReporter
 
-  constructor(apiKey: string, model: string = 'claude-sonnet-4-5-20250514') {
+  constructor(apiKey: string, model: string = 'claude-sonnet-4-5-20250514', reportUsage?: UsageReporter) {
     this.apiKey = apiKey
     this.model = model
+    this.reportUsage = reportUsage
+  }
+
+  private async report(usage: TokenUsage | null): Promise<void> {
+    if (!usage || !this.reportUsage) return
+    try { await this.reportUsage(this.model, usage) } catch { /* metering must never break a call */ }
   }
 
   isAvailable(): boolean {
@@ -95,6 +121,7 @@ export class AnthropicProvider implements AIProvider {
     }
 
     const data = await response.json()
+    await this.report(anthropicUsage(data.usage))
     return data.content?.[0]?.text || ''
   }
 
@@ -166,6 +193,7 @@ export class AnthropicProvider implements AIProvider {
     let buffer = ''
     const toolBlocks: Map<number, { id: string; name: string; argsBuffer: string }> = new Map()
     let hasToolCalls = false
+    const usage = new AnthropicUsageTracker()
 
     while (true) {
       const { done, value } = await reader.read()
@@ -181,6 +209,7 @@ export class AnthropicProvider implements AIProvider {
         if (!data) continue
         try {
           const json = JSON.parse(data)
+          usage.observe(json)
 
           if (json.type === 'content_block_start' && json.content_block?.type === 'tool_use') {
             hasToolCalls = true
@@ -208,18 +237,21 @@ export class AnthropicProvider implements AIProvider {
               }
               yield { type: 'tool_calls', toolCalls }
             }
+            await this.report(usage.total())
             yield { type: 'done' }
             return
           }
         } catch {}
       }
     }
+    await this.report(usage.total())
     yield { type: 'done' }
   }
 
   private async *parseStream(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<string, void, unknown> {
     const decoder = new TextDecoder()
     let buffer = ''
+    const usage = new AnthropicUsageTracker()
 
     while (true) {
       const { done, value } = await reader.read()
@@ -234,14 +266,17 @@ export class AnthropicProvider implements AIProvider {
         if (!data) continue
         try {
           const json = JSON.parse(data)
+          usage.observe(json)
           if (json.type === 'content_block_delta' && json.delta?.type === 'text_delta') {
             if (typeof json.delta.text === 'string' && json.delta.text) yield json.delta.text
           } else if (json.type === 'message_stop') {
+            await this.report(usage.total())
             return
           }
         } catch {}
       }
     }
+    await this.report(usage.total())
   }
 
   async chat(messages: ChatMessage[], systemPrompt?: string, signal?: AbortSignal): Promise<string> {

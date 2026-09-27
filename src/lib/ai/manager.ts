@@ -10,6 +10,7 @@ import { getRecentMemory, addMemory, retrieveRelevantMemory, buildMemoryContext,
 import { getMetaConnection } from '@/lib/meta/user-client'
 import { resolveSecrets, SECRET_KEYS } from '@/lib/secrets'
 import { generateAdImage, type ImageGenOptions, type ImageGenResult } from '@/lib/ai/image-generator'
+import { recordImageUsage } from '@/lib/ai/usage'
 import { persistGeneratedImage } from '@/lib/ai/image-store'
 import { syncCampaignInsights, syncFromMeta } from '@/lib/meta/sync'
 import { runReflection } from '@/lib/ai/reflection'
@@ -51,6 +52,8 @@ export interface ManagerConfig {
   conversationId?: string
   actor?: 'agent' | 'autonomous'
   autoApproved?: boolean
+  /** Ledger label for this manager's AI calls; defaults to chat / autonomous. */
+  usageSource?: string
 }
 
 export interface ChatOptions {
@@ -119,6 +122,7 @@ export class AIManager {
   readonly conversationId?: string
   readonly actor: 'agent' | 'autonomous'
   readonly autoApproved: boolean
+  readonly usageSource: string
 
   private settings: any
   private provider: AIProvider | null = null
@@ -132,6 +136,7 @@ export class AIManager {
     this.conversationId = config.conversationId
     this.actor = config.actor || 'agent'
     this.autoApproved = config.autoApproved || false
+    this.usageSource = config.usageSource || (this.actor === 'autonomous' ? 'autonomous' : 'chat')
   }
 
   // ─── Initialization ────────────────────────────────────────────────────
@@ -156,7 +161,7 @@ export class AIManager {
       apiKey: settings.apiKey || undefined,
       model: settings.model,
       baseUrl: settings.baseUrl || undefined,
-    })
+    }, { userId: this.userId, source: this.usageSource })
 
     try {
       this.strategy = await getStrategy(this.userId)
@@ -486,6 +491,7 @@ NOTE: this conversation is long, so the ${droppedCount} oldest message(s) are no
         ? this.localCtx!.apiKey
         : this.localCtx!.embeddingKey || this.localCtx!.apiKey
     const result = await generateAdImage('openai', imageApiKey, prompt, options)
+    await recordImageUsage({ userId: this.userId, source: this.usageSource }, result)
 
     if (result.success && result.imageUrl) {
       const saved = await persistGeneratedImage(result.imageUrl, this.userId)
@@ -700,13 +706,14 @@ export async function createAIManager(config: ManagerConfig): Promise<AIManager>
  */
 export async function createAutonomousManager(
   userId: string,
-  options?: { conversationId?: string; forceAutoApproved?: boolean },
+  options?: { conversationId?: string; forceAutoApproved?: boolean; usageSource?: string },
 ): Promise<AIManager> {
   const manager = new AIManager({
     userId,
     conversationId: options?.conversationId,
     actor: 'autonomous',
     autoApproved: options?.forceAutoApproved || false,
+    usageSource: options?.usageSource,
   })
   await manager.init()
 

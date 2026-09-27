@@ -81,7 +81,7 @@ export async function runRoutine(params: {
   // Initialise the autonomous manager (provider, strategy, tool context)
   let manager: AIManager
   try {
-    manager = await createAutonomousManager(userId)
+    manager = await createAutonomousManager(userId, { usageSource: `autonomous:${routine}` })
   } catch (e) {
     return { success: false, conversationId: '', response: '', toolCalls: 0, message: 'Failed to initialise AI Manager', error: e instanceof Error ? e.message : 'init error' }
   }

@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic'
 import Image from 'next/image'
 import { Check, ChevronRight, Loader2, ShieldAlert, Volume2, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { getSpecialist } from '@/lib/ai/agents/registry'
 import { Markdown } from './markdown'
 import type { ChartSpec, ToolCallInfo } from './types'
 
@@ -58,7 +59,12 @@ const STEP_LABELS: Record<string, [string, string]> = {
   ask_user_question: ['Asking you a question', 'Asked you a question'],
 }
 
-export function stepLabel(name: string, status: ToolCallInfo['status']): string {
+export function stepLabel(name: string, status: ToolCallInfo['status'], args?: Record<string, unknown>): string {
+  if (name === 'delegate_to_agent') {
+    const who = getSpecialist(String(args?.agent ?? ''))?.name ?? 'a specialist'
+    const the = who === 'a specialist' ? who : `the ${who}`
+    return status === 'pending' ? `Asking ${the}…` : `Asked ${the}`
+  }
   const pair = STEP_LABELS[name]
   if (pair) return status === 'pending' ? `${pair[0]}…` : pair[1]
   const words = name.replace(/_/g, ' ')
@@ -79,9 +85,12 @@ const ToolStep = memo(function ToolStep({ toolCall }: { toolCall: ToolCallInfo }
   const audioUrl = r?.audioUrl as string | undefined
   const report = r?.report as string | undefined
   const imageUrl = r?.imageUrl as string | undefined
-  const message = (r?.message as string | undefined) || (r?.summary as string | undefined) || (r?.transcript as string | undefined)
+  const delegated = toolCall.name === 'delegate_to_agent'
+  // A specialist's summary is the useful part; its "finished" line is not.
+  const message = (delegated ? (r?.summary as string | undefined) : undefined)
+    || (r?.message as string | undefined) || (r?.summary as string | undefined) || (r?.transcript as string | undefined)
   const pending = toolCall.status === 'pending'
-  const failed = toolCall.status === 'error' || Boolean(toolCall.error)
+  const failed = toolCall.status === 'error' || Boolean(toolCall.error) || (delegated && r?.status === 'failed')
   const hasDetail = Boolean(toolCall.error || needsApproval || chart || audioUrl || report || imageUrl || message || toolCall.result !== undefined)
 
   return (
@@ -112,7 +121,7 @@ const ToolStep = memo(function ToolStep({ toolCall }: { toolCall: ToolCallInfo }
                 : <Check aria-hidden="true" className="h-3 w-3" strokeWidth={2.5} />}
         </span>
         <span className={cn('min-w-0 flex-1 truncate', pending ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground')} title={toolCall.name}>
-          {stepLabel(toolCall.name, toolCall.status)}
+          {stepLabel(toolCall.name, toolCall.status, toolCall.arguments)}
           {failed && <span className="ml-1.5 font-medium text-[var(--status-critical-ink)] dark:text-red-300">failed</span>}
           {needsApproval && !failed && <span className="ml-1.5 font-medium text-amber-700 dark:text-amber-300">needs your approval</span>}
         </span>

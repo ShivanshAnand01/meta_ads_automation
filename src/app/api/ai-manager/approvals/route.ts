@@ -85,7 +85,7 @@ export async function POST(request: Request) {
     }
     const provider = settings ? createAIProvider(settings.provider as AIProviderType, {
       apiKey: settings.apiKey || undefined, model: settings.model, baseUrl: settings.baseUrl || undefined,
-    }) : undefined
+    }, { userId, source: 'approvals' }) : undefined
 
     const localCtx: LocalToolContext = {
       userId,
