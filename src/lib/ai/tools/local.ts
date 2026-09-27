@@ -1,7 +1,8 @@
 import { db } from '@/lib/db/supabase-db'
 import { getScopedSupabase } from '@/lib/db/supabase-db'
 import type { AIProvider, AIProviderType } from '@/lib/ai/types'
-import { generateAdImage, saveImageToStorage } from '@/lib/ai/image-generator'
+import { generateAdImage } from '@/lib/ai/image-generator'
+import { persistGeneratedImage } from '@/lib/ai/image-store'
 import { retrieveRelevant, trackGeneratedImage } from '@/lib/ai/rag'
 import { getStrategy, updateStrategy, buildStrategyContext } from '@/lib/ai/strategy'
 import { getRecentMemory, addMemory } from '@/lib/ai/memory'
@@ -347,13 +348,10 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
         negativePrompt: (args.negativePrompt as string) || undefined,
       })
       if (!result.success || !result.imageUrl) return { error: result.error || 'Image generation failed' }
-      let savedUrl = result.imageUrl
-      let storagePath: string | null = null
-      try {
-        const supabase = await getScopedSupabase()
-        const saved = await saveImageToStorage(result.imageUrl, userId, supabase as never)
-        if (saved) { savedUrl = saved.url; storagePath = saved.path }
-      } catch {}
+      const saved = await persistGeneratedImage(result.imageUrl, userId)
+      if (!saved) return { error: 'The image was drawn but could not be saved to storage. Try again.' }
+      const savedUrl = saved.url
+      const storagePath: string | null = saved.path
       try {
         await trackGeneratedImage({ userId, prompt, imageUrl: savedUrl, storagePath, provider: result.provider, size: (args.size as string) || '1024x1024', style: (args.style as string) || 'vivid' })
       } catch {}
@@ -414,13 +412,13 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
       })
       let imageUrl: string | null = null
       if (imgResult.success && imgResult.imageUrl) {
-        imageUrl = imgResult.imageUrl
-        try {
-          const supabase = await getScopedSupabase()
-          const saved = await saveImageToStorage(imgResult.imageUrl, userId, supabase as never)
-          if (saved) imageUrl = saved.url
-        } catch {}
-        try { await trackGeneratedImage({ userId, prompt: imagePrompt, imageUrl: imageUrl, storagePath: null, provider: imgResult.provider, size: '1024x1024', style: 'vivid' }) } catch {}
+        const saved = await persistGeneratedImage(imgResult.imageUrl, userId)
+        if (saved) {
+          imageUrl = saved.url
+          try { await trackGeneratedImage({ userId, prompt: imagePrompt, imageUrl: saved.url, storagePath: saved.path, provider: imgResult.provider, size: '1024x1024', style: 'vivid' }) } catch {}
+        } else {
+          copyWarnings.push('The image was drawn but could not be saved; the creative was kept with text only.')
+        }
       }
 
       // Persist the local creative

@@ -23,12 +23,66 @@ function toOpenAIMessage(m: ChatMessage): Record<string, unknown> {
   return msg
 }
 
+
+/*
+ * OpenAI's models do not all accept the same parameters, and the newer ones
+ * reject what older ones required:
+ *   - GPT-5 and later reject `max_tokens`; every chat model accepts
+ *     `max_completion_tokens` (verified live, 2026-09-27).
+ *   - GPT-5.5 and GPT-6 reject any `temperature` other than the default.
+ * Rather than hard-code a model list that goes stale, send the preferred
+ * tuning, and if OpenAI rejects a specific optional parameter, drop it,
+ * remember that for this model, and retry once.
+ */
+const OPTIONAL_PARAMS = new Set(['temperature', 'top_p', 'presence_penalty', 'frequency_penalty'])
+const unsupportedByModel = new Map<string, Set<string>>()
+
+function withSupportedParams(model: string, body: Record<string, unknown>): Record<string, unknown> {
+  const blocked = unsupportedByModel.get(model)
+  if (!blocked) return body
+  const out = { ...body }
+  for (const k of blocked) delete out[k]
+  return out
+}
+
+async function postChat(apiKey: string, model: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<Response> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify(withSupportedParams(model, { model, ...body })),
+      signal,
+    })
+    if (res.status !== 400) return res
+    const text = await res.clone().text()
+    let param: string | undefined
+    try { param = JSON.parse(text)?.error?.param } catch {}
+    if (!param || !OPTIONAL_PARAMS.has(param) || unsupportedByModel.get(model)?.has(param)) return res
+    const set = unsupportedByModel.get(model) ?? new Set<string>()
+    set.add(param)
+    unsupportedByModel.set(model, set)
+  }
+  throw new Error('OpenAI kept rejecting the request parameters')
+}
+
+/** A readable error for the owner, with OpenAI's own message kept for us. */
+async function openAIError(res: Response): Promise<Error> {
+  const raw = await res.text().catch(() => '')
+  let msg = raw
+  try { msg = JSON.parse(raw)?.error?.message || raw } catch {}
+  const hint =
+    res.status === 401 ? ' Check the OpenAI key in Settings.' :
+    res.status === 429 ? ' OpenAI is rate-limiting this key or it is out of credit; check billing at platform.openai.com.' :
+    res.status === 404 ? ' The model name in Settings may be wrong or not available to this key.' : ''
+  return new Error(`OpenAI error ${res.status}: ${String(msg).slice(0, 300)}${hint}`)
+}
+
 export class OpenAIProvider implements AIProvider {
   name = 'openai'
   private apiKey: string
   private model: string
 
-  constructor(apiKey: string, model: string = 'gpt-4o') {
+  constructor(apiKey: string, model: string = 'gpt-5.4-mini') {
     this.apiKey = apiKey
     this.model = model
   }
@@ -42,19 +96,10 @@ export class OpenAIProvider implements AIProvider {
     if (systemPrompt) messages.push({ role: 'system', content: systemPrompt })
     messages.push({ role: 'user', content: prompt })
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.apiKey}`,
-      },
-      body: JSON.stringify({ model: this.model, messages, temperature: 0.7, max_tokens: 2000 }),
-    })
-
-    if (!response.ok) {
-      const error = await response.text()
-      throw new Error(`OpenAI error: ${response.status} - ${error}`)
-    }
+    // Generous cap: reasoning models spend part of it thinking before they
+    // write, and structured creative batches can be long. Billed on use only.
+    const response = await postChat(this.apiKey, this.model, { messages, temperature: 0.7, max_completion_tokens: 8000 })
+    if (!response.ok) throw await openAIError(response)
 
     const data = await response.json()
     return data.choices?.[0]?.message?.content || ''
@@ -71,20 +116,8 @@ export class OpenAIProvider implements AIProvider {
       if (m.role !== 'tool') reqMessages.push(toOpenAIMessage(m))
     }
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.apiKey}`,
-      },
-      body: JSON.stringify({ model: this.model, messages: reqMessages, temperature: 0.7, stream: true }),
-      signal,
-    })
-
-    if (!response.ok || !response.body) {
-      const error = await response.text().catch(() => '')
-      throw new Error(`OpenAI error: ${response.status} - ${error}`)
-    }
+    const response = await postChat(this.apiKey, this.model, { messages: reqMessages, temperature: 0.7, stream: true }, signal)
+    if (!response.ok || !response.body) throw await openAIError(response)
 
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
@@ -121,27 +154,14 @@ export class OpenAIProvider implements AIProvider {
       ...messages.map(toOpenAIMessage),
     ]
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: this.model,
-        messages: reqMessages,
-        tools,
-        tool_choice: 'auto',
-        temperature: 0.7,
-        stream: true,
-      }),
-      signal,
-    })
-
-    if (!response.ok || !response.body) {
-      const error = await response.text().catch(() => '')
-      throw new Error(`OpenAI error: ${response.status} - ${error}`)
-    }
+    const response = await postChat(this.apiKey, this.model, {
+      messages: reqMessages,
+      tools,
+      tool_choice: 'auto',
+      temperature: 0.7,
+      stream: true,
+    }, signal)
+    if (!response.ok || !response.body) throw await openAIError(response)
 
     const reader = response.body.getReader()
     const decoder = new TextDecoder()

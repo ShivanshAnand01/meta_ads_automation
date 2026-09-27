@@ -1,8 +1,9 @@
 import { db } from '@/lib/db/supabase-db'
-import { requireUserId, handleError, getSupabaseServer } from '@/lib/supabase/server'
+import { requireUserId, handleError } from '@/lib/supabase/server'
 import { createAIProvider } from '@/lib/ai/factory'
 import { generateCreativeSuggestion, generateMultipleCreativeSuggestions } from '@/lib/ai/creative-generator'
-import { generateAdImage, saveImageToStorage, type AspectRatio } from '@/lib/ai/image-generator'
+import { generateAdImage, type AspectRatio } from '@/lib/ai/image-generator'
+import { persistGeneratedImage } from '@/lib/ai/image-store'
 import { resolveSecrets, SECRET_KEYS } from '@/lib/secrets'
 import { enforceRateLimit } from '@/lib/rate-limit'
 import { StructuredOutputError } from '@/lib/ai/structured'
@@ -113,13 +114,12 @@ export async function POST(request: Request) {
               warnings.push(`Image for "${s.title}" failed: ${result.error || 'unknown error'}`)
               return { url: null as string | null, provider: result.provider }
             }
-            try {
-              const supabase = await getSupabaseServer()
-              const saved = await saveImageToStorage(result.imageUrl, userId, supabase as never)
-              return { url: saved?.url ?? result.imageUrl, provider: result.provider }
-            } catch {
-              return { url: result.imageUrl, provider: result.provider }
-            }
+            // Never store raw base64 in the row: a multi-megabyte data URL
+            // bloats the database and every page that lists creatives.
+            const saved = await persistGeneratedImage(result.imageUrl, userId)
+            if (saved?.url) return { url: saved.url, provider: result.provider }
+            warnings.push(`Image for "${s.title}" was drawn but could not be saved. Try generating it again.`)
+            return { url: null as string | null, provider: result.provider }
           }),
         )
       : suggestions.map(() => ({ url: null as string | null, provider: 'none' }))

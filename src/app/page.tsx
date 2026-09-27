@@ -35,6 +35,7 @@ import {
 import dynamic from 'next/dynamic'
 import type { TrendPoint } from '@/components/charts/trend-chart'
 import { AiOrb } from '@/components/chat/ai-orb'
+import { normalizeReview } from '@/lib/ai/review-status'
 
 // Client-only. Recharts writes colours into SVG presentation attributes, which
 // cannot read CSS custom properties, so the hue is resolved in JS — and the
@@ -392,9 +393,9 @@ export default function DashboardPage() {
                     </p>
                   </div>
                   <StatusPill
-                    tone={c.reviewStatus === 'verified' ? 'good' : c.reviewStatus === 'not_verified' ? 'critical' : 'neutral'}
+                    tone={normalizeReview(c.reviewStatus) === 'approved' ? 'good' : normalizeReview(c.reviewStatus) === 'rejected' ? 'critical' : 'warning'}
                   >
-                    {c.reviewStatus === 'verified' ? 'Approved' : c.reviewStatus === 'not_verified' ? 'Needs work' : 'Pending'}
+                    {normalizeReview(c.reviewStatus) === 'approved' ? 'Approved' : normalizeReview(c.reviewStatus) === 'rejected' ? 'Rejected' : 'Needs review'}
                   </StatusPill>
                 </li>
               ))}

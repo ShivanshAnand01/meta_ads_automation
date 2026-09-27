@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { isApproved } from '@/lib/ai/review-status'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -298,7 +299,7 @@ function PublishDialog({ campaign, profile, onOpenChange, onDone }: { campaign: 
     }).catch(() => setAssets({ connected: false, pages: [], pixels: [] }))
   }, [])
 
-  const approved = (creatives || []).filter((c) => c.reviewStatus === 'approved')
+  const approved = (creatives || []).filter((c) => isApproved(c.reviewStatus))
   const isSales = campaign.objective === 'OUTCOME_SALES'
 
   async function publish() {

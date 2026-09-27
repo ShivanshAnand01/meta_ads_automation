@@ -97,9 +97,10 @@ export async function POST(request: Request) {
     if (body.creativeId) {
       await db.adCreative.update({
         where: { id: body.creativeId as string, userId },
+        // Record the AI's opinion only. Approving is the owner's decision;
+        // this used to mark every reviewed creative as publishable.
         data: {
-          reviewStatus: 'verified',
-          reviewNotes: `Score: ${review.score}/100`,
+          reviewNotes: `AI score: ${review.score}/100`,
         },
       })
     }

@@ -105,7 +105,8 @@ export type CampaignStatus = 'ACTIVE' | 'PAUSED' | 'DELETED' | 'ARCHIVED' | 'DRA
 
 export type AdCreativeStatus = 'draft' | 'pending_review' | 'approved' | 'rejected' | 'published'
 
-export type ReviewStatus = 'pending' | 'verified' | 'not_verified'
+/** Owner's decision; see src/lib/ai/review-status.ts. Legacy rows may hold 'verified'/'not_verified'. */
+export type ReviewStatus = 'pending' | 'approved' | 'rejected'
 
 // ── Ad Set / Ad layer ────────────────────────────────────────────────────
 // Meta's delivery hierarchy is Campaign → Ad Set → Ad. A campaign alone

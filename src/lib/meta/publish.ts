@@ -1,4 +1,5 @@
 import { db } from '@/lib/db/supabase-db'
+import { isApproved } from '@/lib/ai/review-status'
 import { getMetaClientForUser, getMetaConnection, needsMetaConnection } from './user-client'
 import { MetaApiError, type MetaApiClient } from './client'
 import type {
@@ -349,9 +350,16 @@ export async function publishFullCampaign(input: PublishCampaignInput): Promise<
 
   // ── 3. Creatives + Ads ────────────────────────────────────────────────
   const creatives = (await db.adCreative.findMany({ where: { userId } })) as any[]
-  const selected = input.creativeIds?.length
+  // Only creatives the owner approved can become ads, whether they were named
+  // explicitly or picked from the campaign. An AI review is not an approval.
+  const requested = input.creativeIds?.length
     ? creatives.filter((c) => input.creativeIds!.includes(c.id))
-    : creatives.filter((c) => c.campaignId === campaignId && c.reviewStatus === 'verified')
+    : creatives.filter((c) => c.campaignId === campaignId)
+  const selected = requested.filter((c) => isApproved(c.reviewStatus))
+  const skipped = requested.length - selected.length
+  if (skipped > 0) {
+    warnings.push(`${skipped} creative${skipped === 1 ? ' was' : 's were'} skipped because ${skipped === 1 ? 'it is' : 'they are'} not approved yet.`)
+  }
 
   if (selected.length === 0) {
     return {

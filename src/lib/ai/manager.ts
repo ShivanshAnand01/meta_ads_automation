@@ -9,8 +9,8 @@ import { getStrategy, updateStrategy, buildStrategyContext, type AccountStrategy
 import { getRecentMemory, addMemory, retrieveRelevantMemory, buildMemoryContext, type EmbedConfig, type ManagerMemory } from '@/lib/ai/memory'
 import { getMetaConnection } from '@/lib/meta/user-client'
 import { resolveSecrets, SECRET_KEYS } from '@/lib/secrets'
-import { generateAdImage, saveImageToStorage, type ImageGenOptions, type ImageGenResult } from '@/lib/ai/image-generator'
-import { getSupabaseServer } from '@/lib/supabase/server'
+import { generateAdImage, type ImageGenOptions, type ImageGenResult } from '@/lib/ai/image-generator'
+import { persistGeneratedImage } from '@/lib/ai/image-store'
 import { syncCampaignInsights, syncFromMeta } from '@/lib/meta/sync'
 import { runReflection } from '@/lib/ai/reflection'
 import { retrieveRelevant } from '@/lib/ai/rag'
@@ -488,14 +488,9 @@ NOTE: this conversation is long, so the ${droppedCount} oldest message(s) are no
     const result = await generateAdImage('openai', imageApiKey, prompt, options)
 
     if (result.success && result.imageUrl) {
-      // Persist to Supabase storage for a stable public URL
-      try {
-        const supabase = await getSupabaseServer()
-        const saved = await saveImageToStorage(result.imageUrl, this.userId, supabase as never)
-        if (saved) {
-          return { ...result, imageUrl: saved.url }
-        }
-      } catch {}
+      const saved = await persistGeneratedImage(result.imageUrl, this.userId)
+      if (saved) return { ...result, imageUrl: saved.url }
+      return { ...result, success: false, imageUrl: '', error: 'The image was drawn but could not be saved to storage.' }
     }
 
     return result

@@ -55,8 +55,11 @@ type PollinationsModel = (typeof POLLINATIONS_MODELS)[number]
  * fallback chain — 270s worst case, on a function that is killed at 60s. So
  * generation timed out before it could ever fail over.
  */
+// OpenAI images routinely take 20-60 s. The old 22 s cap aborted most of
+// them and dropped silently to the free fallback.
+const OPENAI_TIMEOUT_MS = 120_000
 const PROVIDER_TIMEOUT_MS = 22_000
-const DEFAULT_TOTAL_BUDGET_MS = 50_000
+const DEFAULT_TOTAL_BUDGET_MS = 150_000
 
 function resolveDimensions(options?: ImageGenOptions): { w: number; h: number } {
   if (options?.aspectRatio && ASPECT_RATIO_DIMENSIONS[options.aspectRatio]) {
@@ -142,7 +145,8 @@ async function generateViaGptImage(
   const enhancedPrompt = buildEnhancedPrompt(prompt, options)
   const size = resolveGptImageSize(options)
   const qualityMap: Record<string, 'low' | 'medium' | 'high'> = { standard: 'medium', hd: 'high' }
-  const quality = (options?.quality ? qualityMap[options.quality] : 'high') as 'low' | 'medium' | 'high'
+  // Medium is ad-grade, about a quarter of the cost of high and much faster.
+  const quality = (options?.quality ? qualityMap[options.quality] : 'medium') as 'low' | 'medium' | 'high'
 
   const response = await fetch('https://api.openai.com/v1/images/generations', {
     method: 'POST',
@@ -160,7 +164,14 @@ async function generateViaGptImage(
 
   if (!response.ok) {
     const errText = await response.text()
-    throw new Error(`GPT image error ${response.status}: ${errText.slice(0, 200)}`)
+    let msg = errText
+    try { msg = JSON.parse(errText)?.error?.message || errText } catch {}
+    const hint =
+      /verif/i.test(msg) ? ' Your OpenAI organisation must be verified to use image models: platform.openai.com → Settings → Organization → Verify.' :
+      response.status === 401 ? ' Check the OpenAI key in Settings.' :
+      response.status === 429 ? ' OpenAI is rate-limiting this key or it is out of credit.' :
+      /safety|moderation|content_policy/i.test(msg) ? ' OpenAI declined this prompt under its content policy; rephrase the product description.' : ''
+    throw new Error(`OpenAI image error ${response.status}: ${String(msg).slice(0, 240)}${hint}`)
   }
 
   const data = await response.json()
@@ -214,9 +225,9 @@ async function generateViaPollinations(
 }
 
 /** Run one provider attempt under both a per-attempt and a total deadline. */
-async function withTimeout<T>(fn: (signal: AbortSignal) => Promise<T>, budgetMs: number): Promise<T> {
+async function withTimeout<T>(fn: (signal: AbortSignal) => Promise<T>, budgetMs: number, capMs = PROVIDER_TIMEOUT_MS): Promise<T> {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), Math.min(PROVIDER_TIMEOUT_MS, budgetMs))
+  const timer = setTimeout(() => controller.abort(), Math.min(capMs, budgetMs))
   try {
     return await fn(controller.signal)
   } finally {
@@ -247,9 +258,9 @@ export async function generateAdImage(
 
   if (apiKey) {
     try {
-      return await withTimeout((signal) => generateViaGptImage(apiKey, prompt, options, signal), remaining())
+      return await withTimeout((signal) => generateViaGptImage(apiKey, prompt, options, signal), remaining(), OPENAI_TIMEOUT_MS)
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'GPT image failed'
+      const message = err instanceof Error ? (err.name === 'AbortError' ? 'OpenAI took longer than 120 seconds to draw the image' : err.message) : 'GPT image failed'
       errors.push(message)
       console.warn('[image] gpt-image-1 failed, falling back:', message)
     }
@@ -257,13 +268,15 @@ export async function generateAdImage(
     errors.push('No OpenAI API key configured for image generation')
   }
 
-  const fallbackEnabled = process.env.IMAGE_FALLBACK_ENABLED !== 'false'
+  // The free fallback (Pollinations) has no commercial licence or moderation,
+  // so it is never used for client ads unless explicitly switched on.
+  const fallbackEnabled = process.env.IMAGE_FALLBACK_ENABLED === 'true'
   if (!fallbackEnabled) {
     return {
       success: false,
       imageUrl: '',
       provider: 'none',
-      error: `Image generation failed and the free fallback is disabled for this account: ${errors.join(' | ')}`,
+      error: errors.join(' | '),
     }
   }
 

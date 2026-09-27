@@ -443,11 +443,12 @@ function CreativeCard({
 }
 
 function ReviewBody({ review }: { review: CreativeReview }) {
-  const tone: StatusTone = review.score >= 8 ? 'good' : review.score >= 5 ? 'warning' : 'critical'
+  // The reviewer scores out of 100; this used to print "68/10".
+  const tone: StatusTone = review.score >= 80 ? 'good' : review.score >= 50 ? 'warning' : 'critical'
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <span className="text-3xl font-semibold tabular">{review.score}<span className="text-base text-muted-foreground">/10</span></span>
+        <span className="text-3xl font-semibold tabular">{review.score}<span className="text-base text-muted-foreground">/100</span></span>
         <StatusPill tone={tone}>{tone === 'good' ? 'Strong' : tone === 'warning' ? 'Needs work' : 'Weak'}</StatusPill>
       </div>
       <ReviewList title="What works" items={review.strengths} tone="good" />
