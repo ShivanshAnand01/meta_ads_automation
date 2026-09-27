@@ -15,7 +15,7 @@ Owner: Shivansh (ceo.realtooth@gmail.com). He judges the tool by whether a non-t
 | Live | https://meta-ads-platform-two.vercel.app |
 | Repo (local) | `C:\Users\SHIVANSH\meta-ads-platform` — GitHub `ShivanshAnand01/meta_ads_automation`, branch `master`, **public** |
 | Vercel | project `meta-ads-platform`, team `shivansh-s-projects14`, **Hobby plan**, region `bom1`. Push to `master` auto-deploys (git webhook works). Token for CLI in `~/command-center-brain/.env` as `VERCEL_TOKEN` (same account; use `npx vercel@latest … --token=$VERCEL_TOKEN --scope=shivansh-s-projects14`). |
-| Supabase | project `mnepghtodhjdxtmcihls` ("Meta Ads Automation", ap-southeast-1). Migrations `0001`–`0003` applied. The Supabase MCP's direct-Postgres tools sometimes fail with `28P01 password authentication failed` — that is the MCP tool's credential, not the app; use the REST API with `SUPABASE_SERVICE_ROLE_KEY` from `.env.local`, or `pg` via `DIRECT_URL`. |
+| Supabase | project `mnepghtodhjdxtmcihls` ("Meta Ads Automation", ap-southeast-1). Migrations `0001`–`0005` applied (see DEPLOYMENT.md for how). The Supabase MCP's direct-Postgres tools sometimes fail with `28P01 password authentication failed` — that is the MCP tool's credential, not the app; use the REST API with `SUPABASE_SERVICE_ROLE_KEY` from `.env.local`, or `pg` via `DIRECT_URL`. |
 | Docs in repo | `README.md`, `DEPLOYMENT.md`, this file |
 | Verify | `npm run typecheck && npm run lint && npm test && npm run build` — all green at commit `7ec31b2`. Tests: 39, run under tsx. |
 | Live read-only check | `npx tsx scripts/smoke-meta-readonly.ts` — 21/21 pass; exercises Graph, MCP spawn, and MCP→Graph fallback against the real account with zero spend. |
@@ -24,15 +24,17 @@ Owner: Shivansh (ceo.realtooth@gmail.com). He judges the tool by whether a non-t
 
 User `ef47db24-ea14-4d0e-b9a5-9036b052921a`, ad account **act_1316138380606285 "Marathi Dnyan"**, INR, app `2240767766687942`. Profile seeded: Marathi (Devanagari), mixed with English, Maharashtra.
 
-- **Token expires 2026-09-28.** Nothing auto-renews it. Reconnect via the agent (`connect_meta_account`) or `/connect`. `meta-ads-mcp` has `META_AUTO_REFRESH` — untested.
-- **Token scopes are `read_insights, ads_management, ads_read, public_profile` — no `pages_*` scopes.** `/me/accounts` returns 0 Pages, so **no link ad can be created** until the token is regenerated with `pages_show_list`, `pages_read_engagement`, `pages_manage_ads` (+ `business_management` if the Page is under Business Manager). The publish pipeline correctly refuses.
+- **Token regenerated with Page scopes; expires 2026-11-21.** Scopes: `read_insights, pages_show_list, ads_management, ads_read, business_management, pages_read_engagement, pages_manage_ads, public_profile`. One Page visible: "AI उद्योजक बना" (`1164580690072134`). Nothing auto-renews the token.
+- **OpenAI is the AI provider, model `gpt-5.4-mini`.** Its key sat in plain text in `ai_settings.api_key` (a Vault write had failed silently); moved into Vault on 2026-09-27 and `storeSecret` now logs such failures.
 - **0 campaigns, 0 Pixels, ₹0 spend in 30 days.** No Pixel → no conversion optimisation, no revenue, ROAS reads 0, no retargeting.
 - **No landing URL on the profile** — publishing refuses without one, by design.
 - Meta geo key for Maharashtra = `1735`, locale Marathi = `81` (resolved live).
 
 ## What is verified vs not
 
-**Verified live, through the app's own code:** connection + Vault, profile injection, Graph reads (campaigns, ad sets, ads, pages, pixels, insights, geo/locale search), MCP spawn per user with the user's env, MCP→Graph fallback routing (`via` field), token validation. Multi-tenant onboarding tools exist and typecheck.
+**Verified live 2026-09-27:** smoke check 21/21 after the Vault fix (was 13/21: session-less runs got no token); cron endpoint answers 200 with the secret and 401 without it; Connections key checks reject bad Tavily and fal.ai keys with plain messages; the MCP client connects, lists and calls tools on a real public server.
+
+**Verified earlier, through the app's own code:** connection + Vault, profile injection, Graph reads (campaigns, ad sets, ads, pages, pixels, insights, geo/locale search), MCP spawn per user with the user's env, MCP→Graph fallback routing (`via` field), token validation. Multi-tenant onboarding tools exist and typecheck.
 
 **Never exercised against Meta:** the **write path** — `create_campaign`, `create_ad_set`, `create_ad_creative`, `create_ad`, `publish_full_campaign`. MCP argument adaptation for these is unit-tested (`src/lib/meta/mcp-args.ts`, 14 tests: budgets major→minor units, `status`→`configured_status`, `location_types` injected, `end_time`→`stop_time`, CTA string→object) but has not hit a live account. `ingest_website` has never run. Cron is once daily (Hobby limit; `30 0 * * *` = 06:00 IST).
 
@@ -45,16 +47,21 @@ User `ef47db24-ea14-4d0e-b9a5-9036b052921a`, ad account **act_1316138380606285 "
 5. A sub-daily cron **fails the Vercel deploy outright** on Hobby; it does not degrade. Keep daily until Pro.
 6. `next-themes`, Base UI `Button` (`render={<Link/>}` needs `nativeButton={false}`), Recharts colours can't read CSS vars (resolve in JS, render client-only, `isAnimationActive={false}`).
 7. The first push after changing `vercel.json` looked like it did nothing — the deploy failed at config validation before a deployment record existed.
+8. **Anything without a browser session was broken twice over**: the proxy 401'd machine callers before their route ran, and `get_user_secret` needs `auth.uid()`. Test autonomous paths with a real secret-authenticated call, not from a logged-in page.
+9. **An MCP server listing its tools does not prove the key works.** Tavily's lists tools for any key. Connections runs the provider's API key check before trusting an MCP listing.
+10. **Do not bypass auth to screenshot signed-in pages.** A dev-only impersonation patch was refused by the permission classifier and reverted. Verify signed-in UI with the owner, or with a fixture that needs no auth change.
 
 ## Next steps, in order
 
-1. **Shivansh, today:** regenerate the Meta token **with Page scopes**, reconnect (expires 28 Sep), install the Pixel firing `Purchase`/`Lead` with value+currency, set a landing URL and daily/monthly caps in the profile/strategy.
+1. **Shivansh:** ~~regenerate the Meta token with Page scopes~~ (done). Still open: set a landing URL (Business Profile) and daily/monthly caps (Settings) — the dashboard's launch checklist tracks both; install the Pixel only if customers buy on a website; connect a research tool under Connections; set up the n8n heartbeat (DEPLOYMENT.md → External heartbeat).
 2. **One ₹100 paused publish, end to end**, verified in Ads Manager — proves the write path. Watch `via` in tool results to see whether MCP or Graph handled each step.
 3. **Leads engine:** Click-to-WhatsApp campaigns as a first-class type (`destination_type: WHATSAPP`, `WHATSAPP_MESSAGE` CTA, pre-filled opener in the profile language) and Instant Forms + leadgen webhook → `leads` table → notify owner. Zero code for either exists today.
 4. **Funnel builder:** prospecting + retargeting (pixel visitors 7/30d, engagers) + lookalike of purchasers. Zero retargeting code today. UTM builder and landing-page check (zero today).
 5. **Learning loop:** creative generation does not read memory or ad-level insights; reflection's learnings go unread. Feed winners into prompts; fatigue rule (frequency > 2.5 or CTR −30%/7d → rotate); real A/B (variants as separate ads, auto-pause losers).
 6. **Script compositing** for images (headline/price/CTA rendered in code with Noto Sans Devanagari etc.; diffusion can't render Indic scripts). Creatives page redesign (still the old table layout).
 7. Vercel Pro (hourly pacing), a staging Supabase project, make the repo private, custom domain, Sentry.
+
+**Multi-agent plan (agreed 2026-09-26, diagram in `docs/admanager-agents.html`):** one Brain (the existing AI Manager) delegating to five specialists — past-ads analyst, research agent (uses Connections), creative generator, watcher (runs on the heartbeat), editor — all reading and writing shared memory. Not built yet; Connections is the first piece.
 
 **Open question that decides step 3 vs 4 first:** does this business (and the ones he'll onboard) close via website checkout (→ Pixel-driven Sales path) or via WhatsApp/DM conversation (→ Leads path first)? Ask him.
 

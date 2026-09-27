@@ -1,0 +1,239 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "AdManager target: landing page to self-running Meta ads",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "browser",
+      "label": "Landing page + dashboard (browser)"
+    },
+    {
+      "id": "agent",
+      "label": "AI agent (GPT / Claude, switchable)"
+    },
+    {
+      "id": "beat",
+      "label": "Heartbeat (n8n every 2 h)"
+    },
+    {
+      "id": "meta",
+      "label": "Meta (Facebook + Instagram)"
+    }
+  ],
+  "phases": [
+    {
+      "id": "p_arrive",
+      "label": "Attract + log in",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "p_learn",
+      "label": "Ask + learn from past ads",
+      "fromCol": 2,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "p_run",
+      "label": "Build, go live, self-correct",
+      "fromCol": 4,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "groups": [
+    {
+      "id": "auto",
+      "label": "Runs without you: budget caps in code, paused by default",
+      "lane": "agent",
+      "fromCol": 4,
+      "toCol": 5,
+      "variant": "security"
+    }
+  ],
+  "mainPath": [
+    "landing",
+    "login",
+    "request",
+    "learn",
+    "build",
+    "publish",
+    "golive"
+  ],
+  "nodes": [
+    {
+      "id": "landing",
+      "lane": "browser",
+      "col": 0,
+      "type": "frontend",
+      "label": "Landing page",
+      "sublabel": "public link you share",
+      "tag": "to build",
+      "width": 136
+    },
+    {
+      "id": "login",
+      "lane": "browser",
+      "col": 1,
+      "type": "security",
+      "label": "Log in",
+      "sublabel": "opens the dashboard",
+      "width": 136
+    },
+    {
+      "id": "request",
+      "lane": "browser",
+      "col": 2,
+      "type": "frontend",
+      "label": "\"Build this for me\"",
+      "sublabel": "agent asks 4-5 questions",
+      "width": 136
+    },
+    {
+      "id": "learn",
+      "lane": "agent",
+      "col": 3,
+      "type": "backend",
+      "label": "Learn the playbook",
+      "sublabel": "what worked, what failed",
+      "tag": "to build",
+      "width": 136
+    },
+    {
+      "id": "build",
+      "lane": "agent",
+      "col": 4,
+      "type": "backend",
+      "label": "Build + set budget",
+      "sublabel": "copy + image, your language",
+      "width": 136
+    },
+    {
+      "id": "monitor",
+      "lane": "agent",
+      "col": 5,
+      "type": "backend",
+      "label": "Check + adjust",
+      "sublabel": "scale, pause, rotate",
+      "width": 136
+    },
+    {
+      "id": "n8n",
+      "lane": "beat",
+      "col": 5,
+      "type": "messagebus",
+      "label": "n8n webhook",
+      "sublabel": "wakes the agent",
+      "tag": "to wire",
+      "width": 136
+    },
+    {
+      "id": "history",
+      "lane": "meta",
+      "col": 3,
+      "type": "external",
+      "label": "Past ads + results",
+      "sublabel": "your ad account history",
+      "width": 136
+    },
+    {
+      "id": "publish",
+      "lane": "meta",
+      "col": 4,
+      "type": "cloud",
+      "label": "Publish PAUSED",
+      "sublabel": "Campaign → Ad Set → Ad",
+      "width": 136
+    },
+    {
+      "id": "golive",
+      "lane": "meta",
+      "col": 5,
+      "type": "security",
+      "label": "Go live",
+      "sublabel": "your explicit yes",
+      "tag": "human gate",
+      "width": 136
+    }
+  ],
+  "edges": [
+    {
+      "from": "landing",
+      "to": "login"
+    },
+    {
+      "from": "login",
+      "to": "request"
+    },
+    {
+      "from": "request",
+      "to": "learn",
+      "label": "your answers"
+    },
+    {
+      "from": "learn",
+      "to": "history",
+      "label": "imports",
+      "role": "branch"
+    },
+    {
+      "from": "learn",
+      "to": "build"
+    },
+    {
+      "from": "build",
+      "to": "publish",
+      "label": "you approve creatives"
+    },
+    {
+      "from": "publish",
+      "to": "golive"
+    },
+    {
+      "from": "n8n",
+      "to": "monitor",
+      "label": "every 2 h",
+      "role": "async"
+    },
+    {
+      "from": "monitor",
+      "to": "build",
+      "label": "learnings back in",
+      "role": "return",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Already works today",
+      "items": [
+        "Log in, onboarding chat, profile",
+        "Model switch in Settings",
+        "Webhook endpoint n8n can call"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "To build, in this order",
+      "items": [
+        "1 Prove publish with a ₹100 paused ad",
+        "2 Landing page, model presets",
+        "3 Import past ads, learning loop"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "You must provide",
+      "items": [
+        "Meta token with Page scopes",
+        "OpenAI or Anthropic API key",
+        "Website checkout or WhatsApp?"
+      ]
+    }
+  ]
+}

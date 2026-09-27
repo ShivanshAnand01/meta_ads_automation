@@ -1,0 +1,345 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "AdManager agents: one brain, five specialists",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1200,
+      680
+    ]
+  },
+  "components": [
+    {
+      "id": "dashboard",
+      "type": "frontend",
+      "label": "Dashboard + chat",
+      "sublabel": "you ask, approve, go live",
+      "pos": [
+        530,
+        80
+      ],
+      "size": [
+        170,
+        60
+      ]
+    },
+    {
+      "id": "n8n",
+      "type": "messagebus",
+      "label": "n8n heartbeat",
+      "sublabel": "every 2 hours",
+      "pos": [
+        920,
+        80
+      ],
+      "size": [
+        150,
+        60
+      ],
+      "tag": "to wire"
+    },
+    {
+      "id": "brain",
+      "type": "backend",
+      "label": "Brain",
+      "sublabel": "plans, decides, delegates, publishes",
+      "pos": [
+        520,
+        210
+      ],
+      "size": [
+        190,
+        76
+      ],
+      "tag": "exists as AI Manager"
+    },
+    {
+      "id": "memory",
+      "type": "database",
+      "label": "Shared memory",
+      "sublabel": "playbook, learnings, profile",
+      "pos": [
+        920,
+        216
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "historian",
+      "type": "backend",
+      "label": "Past-ads analyst",
+      "sublabel": "what worked, what failed",
+      "pos": [
+        100,
+        370
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "new"
+    },
+    {
+      "id": "scout",
+      "type": "backend",
+      "label": "Research agent",
+      "sublabel": "competitors, market",
+      "pos": [
+        300,
+        370
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "new"
+    },
+    {
+      "id": "creator",
+      "type": "backend",
+      "label": "Creative generator",
+      "sublabel": "copy, image, video",
+      "pos": [
+        500,
+        370
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "partly exists"
+    },
+    {
+      "id": "watcher",
+      "type": "backend",
+      "label": "Watcher",
+      "sublabel": "live results, fatigue",
+      "pos": [
+        700,
+        370
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "partly exists"
+    },
+    {
+      "id": "editor",
+      "type": "backend",
+      "label": "Editor",
+      "sublabel": "fix, vary, A/B",
+      "pos": [
+        900,
+        370
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "new"
+    },
+    {
+      "id": "meta",
+      "type": "external",
+      "label": "Meta Marketing API",
+      "sublabel": "your ad account",
+      "pos": [
+        100,
+        530
+      ],
+      "size": [
+        150,
+        64
+      ]
+    },
+    {
+      "id": "web",
+      "type": "external",
+      "label": "Web search",
+      "sublabel": "competitor pages",
+      "pos": [
+        300,
+        530
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "provider needed"
+    },
+    {
+      "id": "openai",
+      "type": "external",
+      "label": "OpenAI models",
+      "sublabel": "text, image, video",
+      "pos": [
+        700,
+        530
+      ],
+      "size": [
+        150,
+        64
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "AdManager on Vercel + Supabase",
+      "wraps": [
+        "brain",
+        "memory",
+        "historian",
+        "scout",
+        "creator",
+        "watcher",
+        "editor"
+      ]
+    },
+    {
+      "kind": "security-group",
+      "label": "Guardrails in code: budget caps, approvals, paused by default",
+      "wraps": [
+        "brain"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "ask",
+      "from": "dashboard",
+      "to": "brain",
+      "label": "ask / approve",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    },
+    {
+      "id": "wake",
+      "from": "n8n",
+      "to": "brain",
+      "label": "wake",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "recall",
+      "from": "brain",
+      "to": "memory",
+      "label": "reads + writes"
+    },
+    {
+      "id": "b1",
+      "from": "brain",
+      "to": "historian",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "b2",
+      "from": "brain",
+      "to": "scout",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "b3",
+      "from": "brain",
+      "to": "creator",
+      "label": "prompt",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelSegment": 2,
+      "labelDy": 22,
+      "labelDx": 30
+    },
+    {
+      "id": "b4",
+      "from": "brain",
+      "to": "watcher",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "b5",
+      "from": "brain",
+      "to": "editor",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "past",
+      "from": "historian",
+      "to": "meta",
+      "label": "history",
+      "labelDy": 24
+    },
+    {
+      "id": "search",
+      "from": "scout",
+      "to": "web",
+      "label": "search",
+      "labelDy": 24
+    },
+    {
+      "id": "gen",
+      "from": "creator",
+      "to": "openai",
+      "label": "generate"
+    },
+    {
+      "id": "edit",
+      "from": "editor",
+      "to": "openai",
+      "label": "edit",
+      "variant": "dashed"
+    },
+    {
+      "id": "publish",
+      "from": "brain",
+      "to": "meta",
+      "label": "publish PAUSED, adjust, sync",
+      "variant": "security",
+      "fromSide": "left",
+      "toSide": "right",
+      "labelSegment": 0,
+      "labelDy": -12
+    }
+  ],
+  "cards": [
+    {
+      "dot": "violet",
+      "title": "How they talk",
+      "items": [
+        "Brain sends a brief, specialist returns a report",
+        "Every report is written to shared memory",
+        "Brain reads memory before every decision"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "When they run",
+      "items": [
+        "On your request: all five, then build",
+        "Every 2 h via n8n: Watcher, then Editor if needed",
+        "Weekly: Past-ads analyst refreshes the playbook"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Blocker found today",
+      "items": [
+        "Vault token unreadable without a browser session",
+        "So cron and n8n runs cannot reach Meta",
+        "Fix first: service-role secret read"
+      ]
+    }
+  ]
+}

@@ -64,9 +64,24 @@ SQL editor:
 - `0003_business_profiles.sql` — the per-user business profile (language,
   script, market, currency, audience, tone), `knowledge_documents.source_url`
   for website re-crawls.
+- `0004_service_secret_access.sql` — `get_user_secret_for(user, key)` and
+  `delete_user_secret(user, key)`, executable by the service role only, so
+  cron and other session-less runs can read a user's Meta token and AI key.
+- `0005_integrations.sql` — the `integrations` table behind Setup →
+  Connections (owner RLS, explicit grants; secrets live in Vault).
 
-All three are applied to the live database (0001–0002 on 2026-08-30, 0003 on
-2026-09-05).
+All five are applied to the live database (0001–0002 on 2026-08-30, 0003 on
+2026-09-05, 0004–0005 on 2026-09-27).
+
+The SQL editor works, and so does the Prisma CLI against `DIRECT_URL` (it
+reads `prisma.config.ts`):
+
+```bash
+node --env-file=.env.local node_modules/prisma/build/index.js db execute --file supabase/migrations/0005_integrations.sql
+```
+
+Tables created this way do not always inherit Supabase's default grants, so
+new migrations grant `authenticated` and `service_role` explicitly.
 
 **Apply migrations before deploying code that depends on them.** The app writes
 `daily_metrics.level` and upserts against `daily_metrics_unique_row`; if the
@@ -85,11 +100,30 @@ and fails the deploy outright.
 Budget pacing and anomaly detection really want to run hourly. On Pro, change
 the schedule to `*/15 * * * *` and redeploy — nothing else changes.
 
-Trigger a routine manually without waiting for the schedule:
+Until 2026-09-27 no scheduled run ever reached this route: the proxy
+demanded a logged-in user on every API path and answered Vercel Cron with 401
+before the route could check its secret. The proxy now lets a request carrying
+a valid `CRON_SECRET` bearer or `x-runner-secret` header through to
+`/api/cron/*` and `/api/ai-manager/autonomous`, which still re-validate.
+
+Trigger a run manually without waiting for the schedule:
 
 ```bash
 curl -X POST https://meta-ads-platform-two.vercel.app/api/cron/run-jobs -H "x-runner-secret: $RUNNER_SECRET"
 ```
+
+### External heartbeat (n8n, cron-job.org)
+
+Hobby allows one cron a day. For checks every 2–3 hours, point any external
+scheduler at the same route. It only runs jobs that are due, so extra calls
+are harmless.
+
+- Method `POST`, URL `https://meta-ads-platform-two.vercel.app/api/cron/run-jobs`
+- Header `x-runner-secret: <RUNNER_SECRET>` (or `Authorization: Bearer <CRON_SECRET>`)
+- Expect `200` with `{ ranAt, activeJobs, dueJobs, processed, deferred, results }`.
+  A `401` means the secret is wrong.
+
+Keep the secret in the scheduler's credential store, never in the URL.
 
 ## Health check
 

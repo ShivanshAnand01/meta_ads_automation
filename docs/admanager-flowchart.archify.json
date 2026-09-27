@@ -1,0 +1,261 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "AdManager: sign-up to live Meta ads",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "app",
+      "label": "AdManager app (browser)"
+    },
+    {
+      "id": "agent",
+      "label": "AI agent"
+    },
+    {
+      "id": "meta",
+      "label": "Meta (Facebook + Instagram)"
+    },
+    {
+      "id": "gaps",
+      "label": "Missing on your account today",
+      "variant": "exception"
+    }
+  ],
+  "phases": [
+    {
+      "id": "arrive_phase",
+      "label": "Arrive",
+      "fromCol": 0,
+      "toCol": 1
+    },
+    {
+      "id": "onboard_phase",
+      "label": "Onboard + connect",
+      "fromCol": 2,
+      "toCol": 3,
+      "variant": "emphasis"
+    },
+    {
+      "id": "run_phase",
+      "label": "Build, publish, optimise",
+      "fromCol": 4,
+      "toCol": 5,
+      "variant": "dashed"
+    }
+  ],
+  "groups": [
+    {
+      "id": "guardrails",
+      "label": "Guardrails in code: budget caps, approvals, paused by default",
+      "lane": "agent",
+      "fromCol": 4,
+      "toCol": 5,
+      "variant": "security"
+    }
+  ],
+  "mainPath": [
+    "arrive",
+    "signin",
+    "onboard",
+    "connect",
+    "creatives",
+    "publish",
+    "activate",
+    "optimise"
+  ],
+  "nodes": [
+    {
+      "id": "arrive",
+      "lane": "app",
+      "col": 0,
+      "type": "frontend",
+      "label": "Open the app",
+      "sublabel": "any browser, live URL",
+      "width": 136
+    },
+    {
+      "id": "signin",
+      "lane": "app",
+      "col": 1,
+      "type": "security",
+      "label": "Sign in / sign up",
+      "sublabel": "email + password",
+      "width": 136
+    },
+    {
+      "id": "knowledge",
+      "lane": "app",
+      "col": 3,
+      "type": "database",
+      "label": "Profile + knowledge",
+      "sublabel": "website, language, market",
+      "width": 136
+    },
+    {
+      "id": "onboard",
+      "lane": "agent",
+      "col": 2,
+      "type": "backend",
+      "label": "Onboarding chat",
+      "sublabel": "one question at a time",
+      "width": 136
+    },
+    {
+      "id": "connect",
+      "lane": "agent",
+      "col": 3,
+      "type": "security",
+      "label": "Connect Meta app",
+      "sublabel": "App ID, secret, token",
+      "tag": "60-day token",
+      "width": 136
+    },
+    {
+      "id": "creatives",
+      "lane": "agent",
+      "col": 4,
+      "type": "backend",
+      "label": "Write creatives",
+      "sublabel": "copy + image",
+      "width": 136
+    },
+    {
+      "id": "optimise",
+      "lane": "agent",
+      "col": 5,
+      "type": "backend",
+      "label": "Sync + optimise",
+      "sublabel": "daily, within caps",
+      "width": 136
+    },
+    {
+      "id": "publish",
+      "lane": "meta",
+      "col": 4,
+      "type": "cloud",
+      "label": "Publish PAUSED",
+      "sublabel": "Campaign → Ad Set → Ad",
+      "tag": "never run yet",
+      "width": 136
+    },
+    {
+      "id": "activate",
+      "lane": "meta",
+      "col": 5,
+      "type": "security",
+      "label": "Go live",
+      "sublabel": "owner's explicit yes",
+      "tag": "human gate",
+      "width": 136
+    },
+    {
+      "id": "no_page",
+      "lane": "gaps",
+      "col": 3,
+      "type": "security",
+      "label": "No Page scopes",
+      "sublabel": "no ad can be created",
+      "width": 136
+    },
+    {
+      "id": "no_pixel",
+      "lane": "gaps",
+      "col": 4,
+      "type": "security",
+      "label": "No Pixel",
+      "sublabel": "no revenue tracking",
+      "width": 136
+    }
+  ],
+  "edges": [
+    {
+      "from": "arrive",
+      "to": "signin"
+    },
+    {
+      "from": "signin",
+      "to": "onboard"
+    },
+    {
+      "from": "onboard",
+      "to": "knowledge",
+      "label": "saves answers",
+      "role": "branch"
+    },
+    {
+      "from": "onboard",
+      "to": "connect",
+      "label": "credentials, one at a time"
+    },
+    {
+      "from": "connect",
+      "to": "creatives"
+    },
+    {
+      "from": "creatives",
+      "to": "publish",
+      "label": "owner approves"
+    },
+    {
+      "from": "publish",
+      "to": "activate"
+    },
+    {
+      "from": "activate",
+      "to": "optimise"
+    },
+    {
+      "from": "optimise",
+      "to": "creatives",
+      "label": "rotate winners",
+      "role": "return",
+      "variant": "dashed"
+    },
+    {
+      "from": "connect",
+      "to": "no_page",
+      "label": "today",
+      "role": "error",
+      "variant": "security"
+    },
+    {
+      "from": "publish",
+      "to": "no_pixel",
+      "label": "conversion ads refused",
+      "role": "error",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Verified live on your account",
+      "items": [
+        "Sign up, onboarding, profile",
+        "Credentials in Vault, 60-day token",
+        "Reads campaigns, results, Pages"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Built, never run against Meta",
+      "items": [
+        "Website crawl into knowledge",
+        "Creatives with generated images",
+        "Publish, optimise, reflect"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Missing on Meta today",
+      "items": [
+        "Token lacks Page scopes",
+        "No Pixel on the website",
+        "No landing URL, no spend caps"
+      ]
+    }
+  ]
+}
