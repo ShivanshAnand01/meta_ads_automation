@@ -1,56 +1,40 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
-import Image from 'next/image'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import Link from 'next/link'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import rehypeHighlight from 'rehype-highlight'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import { toast } from 'sonner'
-import { motion, AnimatePresence, MotionConfig } from 'framer-motion'
 import { StatusPill, type StatusTone } from '@/components/ui/metric'
 import { MODEL_PRESETS } from '@/lib/ai/model-catalog'
+import { AiOrb } from '@/components/chat/ai-orb'
+import { MessageRow } from '@/components/chat/chat-message'
+import { ChatComposer, type PendingAttachment } from '@/components/chat/chat-composer'
+import { ChatEmpty } from '@/components/chat/chat-empty'
+import type { ChatMessage as Message, ToolCallInfo } from '@/components/chat/types'
 import {
-  LineChart, Line, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer, Legend,
-} from 'recharts'
-import {
-  Send, Loader2, Brain, StickyNote, Plus, Trash2,
-  Wrench, CheckCircle2, XCircle, History, Sparkles, Square,
-  ChevronDown, Cpu, Key, Server, Paperclip, X, Image as ImageIcon,
-  Zap, TrendingUp, Eye, PenLine, BookOpen, Upload,
-  ShieldAlert, Volume2, BarChart3, HelpCircle,
+  Send, Loader2, StickyNote, Plus, Trash2, Sparkles, Cpu, Key, Server,
+  BookOpen, Upload, ShieldAlert, ArrowDown, PanelRight, MessagesSquare,
 } from 'lucide-react'
 
-interface ToolCallInfo {
-  id: string
-  name: string
-  arguments: Record<string, unknown>
-  result?: unknown
-  error?: string
-  status: 'pending' | 'done' | 'error'
-}
-
-interface Message {
-  id?: string
-  role: 'user' | 'assistant'
-  content: string
-  streaming?: boolean
-  thinking?: boolean
-  thinkingPhase?: 'reasoning' | 'analyzing'
-  toolCalls?: ToolCallInfo[]
-  attachments?: Array<{ url: string; type: string; name: string }>
-  createdAt?: string
-}
+/*
+ * AI Manager: the conversation with the agent.
+ *
+ * Performance notes, because "it feels slow" was the complaint:
+ * - Streamed text is buffered and applied once per animation frame, not once
+ *   per token. A fast model sends dozens of tokens a frame.
+ * - Each message is a memoised row; only the one being streamed re-renders.
+ * - Markdown skips syntax highlighting until a message is complete.
+ * - Off-screen rows skip layout and paint (content-visibility).
+ * - Charts load on demand; recharts is no longer in this page's bundle.
+ */
 
 interface Note {
   id: string
@@ -58,32 +42,6 @@ interface Note {
   content: string
   type: string
   createdAt: string
-}
-
-function displayUserContent(content: string): string {
-  const idx = content.indexOf('\n\n[Attached:')
-  return idx > 0 ? content.slice(0, idx) : content
-}
-
-/**
- * Strip accidental tool-execution artifacts from assistant markdown so users
- * only see conversational responses. We keep the visible output clean while
- * leaving the original content stored in the database untouched.
- */
-function cleanAssistantContent(content: string): string {
-  if (!content) return ''
-  return (
-    content
-      // Remove {{{ ... }}} or {{ ... }} template-like raw dumps.
-      .replace(/\{\{\{?[\s\S]*?\}\}\}?/g, '')
-      // Remove lines that look like raw JSON result dumps.
-      .replace(/^\s*\{[\s\S]*?\}\s*$/gm, '')
-      // Remove lines that start with common raw artifact markers.
-      .replace(/^\s*("results?"|"user"|"tool"|"arguments?"|"status"|"data")\s*[:=].*$/gim, '')
-      // Collapse more than two consecutive blank lines.
-      .replace(/\n{3,}/g, '\n\n')
-      .trim()
-  )
 }
 
 interface Conversation {
@@ -129,49 +87,14 @@ const providerInfo = {
   groq: { name: 'Groq', icon: Server, needsApiKey: true, needsBaseUrl: false, defaultBaseUrl: '', defaultModel: 'llama-3.3-70b-versatile' },
 }
 
-
-const suggestions = [
-  { icon: TrendingUp, text: 'Show me my campaigns and their performance' },
-  { icon: PenLine, text: 'Write a complete ad in my language, with an image' },
-  { icon: ImageIcon, text: 'Generate an ad creative image' },
-  { icon: Eye, text: 'Review my latest ad creative' },
-  { icon: Zap, text: 'Test my Meta connection and tell me if it works' },
-]
-
 function safeParseArray(s: string | null | undefined): unknown[] {
   if (!s) return []
   try { return JSON.parse(s) } catch { return [] }
 }
 
-function brainShortLabel(b: BrainConfig): string {
-  const prov = providerInfo[b.provider as keyof typeof providerInfo]
-  const modelLabel = MODEL_PRESETS[b.provider]?.find((m) => m.value === b.model)?.label || b.model
-  return `${prov?.name.split(' ')[0]} · ${modelLabel}`
-}
-
-const toolIcons: Record<string, typeof Wrench> = {
-  ask_user_question: HelpCircle,
-  generate_ad_image: ImageIcon,
-  generate_creative_with_image: ImageIcon,
-  review_creative: Eye,
-  improve_creative: PenLine,
-  get_dashboard_summary: TrendingUp,
-  create_local_campaign: Plus,
-  create_local_creative: Plus,
-  search_knowledge_base: BookOpen,
-  generate_chart: BarChart3,
-  generate_report: BarChart3,
-  speak: Volume2,
-  transcribe_audio: Volume2,
-  sync_campaign_insights: TrendingUp,
-  get_performance_trend: TrendingUp,
-  get_strategy: ShieldAlert,
-  update_strategy: ShieldAlert,
-  get_memory: StickyNote,
-  add_memory: StickyNote,
-  publish_campaign_to_meta: ShieldAlert,
-  set_campaign_status: ShieldAlert,
-  test_meta_connection: ShieldAlert,
+function modelLabelOf(b: BrainConfig | null): string | null {
+  if (!b) return null
+  return MODEL_PRESETS[b.provider]?.find((m) => m.value === b.model)?.label || b.model
 }
 
 interface Approval {
@@ -181,74 +104,6 @@ interface Approval {
   risk: string
   status: string
   createdAt: string
-}
-
-const CHART_COLORS = ['#f97316', '#3b82f6', '#22c55e', '#8b5cf6', '#ec4899', '#eab308']
-
-function ChartRenderer({ spec }: { spec: { chartType: string; data: Array<Record<string, unknown>>; xKey: string; yKeys: Array<{ key: string; label: string; color?: string }>; title: string } }) {
-  if (!spec?.data?.length) return <p className="text-xs text-muted-foreground">No data to chart.</p>
-  const { chartType, data, xKey, yKeys, title } = spec
-  const yk = yKeys || []
-  return (
-    <div className="space-y-1.5">
-      <p className="text-xs font-semibold">{title}</p>
-      <div className="h-56 w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          {chartType === 'line' ? (
-            <LineChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-              <XAxis dataKey={xKey} tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} />
-              <RTooltip />
-              <Legend wrapperStyle={{ fontSize: 10 }} />
-              {yk.map((y, i) => (
-                <Line key={y.key} type="monotone" dataKey={y.key} name={y.label} stroke={y.color || CHART_COLORS[i % CHART_COLORS.length]} strokeWidth={2} dot={false} />
-              ))}
-            </LineChart>
-          ) : chartType === 'area' ? (
-            <AreaChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-              <XAxis dataKey={xKey} tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} />
-              <RTooltip />
-              <Legend wrapperStyle={{ fontSize: 10 }} />
-              {yk.map((y, i) => (
-                <Area key={y.key} type="monotone" dataKey={y.key} name={y.label} stroke={y.color || CHART_COLORS[i % CHART_COLORS.length]} fill={y.color || CHART_COLORS[i % CHART_COLORS.length]} fillOpacity={0.25} strokeWidth={2} />
-              ))}
-            </AreaChart>
-          ) : chartType === 'pie' ? (
-            <PieChart>
-              <RTooltip />
-              <Legend wrapperStyle={{ fontSize: 10 }} />
-              <Pie data={data} dataKey={yk[0]?.key || 'value'} nameKey={xKey} cx="50%" cy="50%" outerRadius={70}>
-                {data.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-              </Pie>
-            </PieChart>
-          ) : chartType === 'funnel' ? (
-            <BarChart data={data} layout="vertical">
-              <XAxis type="number" tick={{ fontSize: 10 }} />
-              <YAxis type="category" dataKey={xKey} tick={{ fontSize: 10 }} width={80} />
-              <RTooltip />
-              <Bar dataKey={yk[0]?.key || 'value'} name={yk[0]?.label || 'Count'} radius={[0, 4, 4, 0]}>
-                {data.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-              </Bar>
-            </BarChart>
-          ) : (
-            <BarChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-              <XAxis dataKey={xKey} tick={{ fontSize: 10 }} />
-              <YAxis tick={{ fontSize: 10 }} />
-              <RTooltip />
-              <Legend wrapperStyle={{ fontSize: 10 }} />
-              {yk.map((y, i) => (
-                <Bar key={y.key} dataKey={y.key} name={y.label} fill={y.color || CHART_COLORS[i % CHART_COLORS.length]} radius={[4, 4, 0, 0]} />
-              ))}
-            </BarChart>
-          )}
-        </ResponsiveContainer>
-      </div>
-    </div>
-  )
 }
 
 const RISK_TONE: Record<string, { tone: StatusTone; label: string }> = {
@@ -284,13 +139,116 @@ function ApprovalCard({ approval, onDecision, busy }: { approval: { id: string; 
   )
 }
 
-/** Respect the OS "reduce motion" setting for every animation on this page. */
-export default function AIManagerPage() {
+function relativeDay(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const days = Math.floor((Date.now() - d.getTime()) / 86_400_000)
+  if (days <= 0 && d.toDateString() === new Date().toDateString()) return d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })
+  if (days <= 1) return 'Yesterday'
+  if (days < 7) return d.toLocaleDateString('en-IN', { weekday: 'short' })
+  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+}
+
+/** Chats, approvals and notes in one panel: a rail on desktop, a sheet on phones. */
+function SidePanel({
+  conversations, activeId, onOpen, onDelete, approvals, approvalBusy, onDecision, notes, tab, onTab,
+}: {
+  conversations: Conversation[]
+  activeId: string | null
+  onOpen: (c: Conversation) => void
+  onDelete: (id: string) => void
+  approvals: Approval[]
+  approvalBusy: string | null
+  onDecision: (id: string, d: 'approve' | 'reject') => void
+  notes: Note[]
+  tab: string
+  onTab: (t: string) => void
+}) {
   return (
-    <MotionConfig reducedMotion="user">
-      <AIManagerPageInner />
-    </MotionConfig>
+    <Tabs value={tab} onValueChange={(v) => onTab(String(v))} className="flex h-full min-h-0 flex-col gap-0">
+      <div className="border-b border-border px-3 pb-2.5 pt-3">
+        <TabsList className="grid h-9 w-full grid-cols-3">
+          <TabsTrigger value="chats" className="text-[13px]">Chats</TabsTrigger>
+          <TabsTrigger value="approvals" className="text-[13px]">
+            Approvals
+            {approvals.length > 0 && (
+              <span className="ml-1 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--status-warning)] px-1 text-[11px] font-semibold text-amber-950 tabular">
+                {approvals.length}<span className="sr-only"> waiting</span>
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="notes" className="text-[13px]">Notes</TabsTrigger>
+        </TabsList>
+      </div>
+
+      <TabsContent value="chats" className="min-h-0 flex-1 overflow-y-auto p-2 scrollbar-thin">
+        {conversations.length === 0 ? (
+          <p className="px-3 py-8 text-center text-sm text-muted-foreground">Your conversations will appear here.</p>
+        ) : (
+          <ul className="space-y-0.5">
+            {conversations.map((c) => {
+              const active = activeId === c.id
+              return (
+                <li key={c.id} className="group relative">
+                  <button
+                    type="button"
+                    onClick={() => onOpen(c)}
+                    aria-current={active ? 'true' : undefined}
+                    className={`flex w-full min-w-0 flex-col gap-0.5 rounded-xl py-2.5 pl-3 pr-11 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                      active ? 'bg-primary/10' : 'hover:bg-muted'
+                    }`}
+                  >
+                    <span className={`truncate text-[13px] font-medium ${active ? 'text-primary' : 'text-foreground'}`}>{c.title || 'Untitled chat'}</span>
+                    <span className="text-xs text-muted-foreground">{relativeDay(c.updatedAt || c.createdAt)}</span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Delete conversation: ${c.title}`}
+                    onClick={() => onDelete(c.id)}
+                    className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-[var(--status-critical)]/10 hover:text-[var(--status-critical-ink)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(hover:none)]:opacity-100"
+                  >
+                    <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </TabsContent>
+
+      <TabsContent value="approvals" className="min-h-0 flex-1 space-y-2.5 overflow-y-auto p-3 scrollbar-thin">
+        {approvals.length === 0 ? (
+          <div className="px-3 py-8 text-center">
+            <ShieldAlert aria-hidden="true" className="mx-auto h-5 w-5 text-muted-foreground" />
+            <p className="mt-2 text-sm font-medium">Nothing waiting</p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">Anything that would change live ad spend waits here for your yes.</p>
+          </div>
+        ) : approvals.map((a) => (
+          <ApprovalCard key={a.id} approval={a} busy={approvalBusy === a.id} onDecision={onDecision} />
+        ))}
+      </TabsContent>
+
+      <TabsContent value="notes" className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3 scrollbar-thin">
+        {notes.length === 0 ? (
+          <div className="px-3 py-8 text-center">
+            <StickyNote aria-hidden="true" className="mx-auto h-5 w-5 text-muted-foreground" />
+            <p className="mt-2 text-sm font-medium">No notes yet</p>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">The agent pins findings and reminders here as it works.</p>
+          </div>
+        ) : notes.map((note) => (
+          <article key={note.id} className="rounded-xl border border-border bg-card p-3 elev-1">
+            <h3 className="text-[13px] font-semibold">{note.title}</h3>
+            <p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-muted-foreground">{note.content}</p>
+          </article>
+        ))}
+      </TabsContent>
+    </Tabs>
   )
+}
+
+/** Respect the OS "reduce motion" setting (CSS handles every animation here). */
+export default function AIManagerPage() {
+  return <AIManagerPageInner />
 }
 
 function AIManagerPageInner() {
@@ -299,19 +257,29 @@ function AIManagerPageInner() {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [uploading, setUploading] = useState(false)
-  const [pendingAttachments, setPendingAttachments] = useState<Array<{ id: string; url: string; type: string; name: string; documentId?: string; loading?: boolean }>>([])
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([])
   const [brain, setBrain] = useState<BrainConfig | null>(null)
+  const [brainLoaded, setBrainLoaded] = useState(false)
   const [showBrainDialog, setShowBrainDialog] = useState(false)
-  const [showHistory, setShowHistory] = useState(false)
+  const [showPanelSheet, setShowPanelSheet] = useState(false)
   const [showKBDialog, setShowKBDialog] = useState(false)
   const [notes, setNotes] = useState<Note[]>([])
   const [abortRef, setAbortRef] = useState<AbortController | null>(null)
-  const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set())
   const [approvals, setApprovals] = useState<Approval[]>([])
   const [approvalBusy, setApprovalBusy] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [panelTab, setPanelTab] = useState('chats')
+  const [animateFrom, setAnimateFrom] = useState(0)
+  const [focusToken, setFocusToken] = useState(0)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   const [autoScroll, setAutoScroll] = useState(true)
+  const autoScrollRef = useRef(true)
+  useEffect(() => { autoScrollRef.current = autoScroll }, [autoScroll])
+  // Pin to the bottom only while something is arriving: a streaming reply,
+  // or a just-opened conversation whose images are still loading. Pinning
+  // at any other time yanked the view away when someone expanded a step.
+  const sendingRef = useRef(false)
+  const pinUntilRef = useRef(0)
   const [showScrollButton, setShowScrollButton] = useState(false)
   const [activeQuestion, setActiveQuestion] = useState<{ questionId: string; question: string; placeholder: string } | null>(null)
   const [questionAnswer, setQuestionAnswer] = useState('')
@@ -325,6 +293,15 @@ function AIManagerPageInner() {
     } catch {}
   }, [])
 
+  // Open on the approvals tab when something is waiting.
+  const approvalsSeen = useRef(false)
+  useEffect(() => {
+    if (!approvalsSeen.current && approvals.length > 0) {
+      approvalsSeen.current = true
+      setPanelTab('approvals')
+    }
+  }, [approvals.length])
+
   async function handleApprovalDecision(id: string, decision: 'approve' | 'reject') {
     setApprovalBusy(id)
     try {
@@ -335,12 +312,8 @@ function AIManagerPageInner() {
       })
       const json = await res.json()
       if (res.ok) {
-        toast.success(decision === 'approve' ? 'Action approved & executed' : 'Action rejected')
-        if (decision === 'approve' && json.result) {
-          setApprovals((prev) => prev.filter((a) => a.id !== id))
-        } else {
-          setApprovals((prev) => prev.filter((a) => a.id !== id))
-        }
+        toast.success(decision === 'approve' ? 'Approved and run' : 'Rejected')
+        setApprovals((prev) => prev.filter((a) => a.id !== id))
       } else {
         toast.error(json.error || 'Failed')
       }
@@ -368,11 +341,34 @@ function AIManagerPageInner() {
     setShowScrollButton(false)
   }, [])
 
+  // Stay pinned to the newest message while the reader is at the bottom.
+  // Content keeps growing after a render (streamed text, images loading,
+  // off-screen rows getting their real height), so watch its size rather
+  // than scrolling once and hoping.
   useEffect(() => {
-    if (!autoScroll) return
-    const el = scrollContainerRef.current
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'auto' })
-  }, [activeConversation?.messages, autoScroll])
+    const content = contentRef.current
+    const scroller = scrollContainerRef.current
+    if (!content || !scroller) return
+    pinUntilRef.current = Date.now() + 1500
+    const ro = new ResizeObserver(() => {
+      const arriving = sendingRef.current || Date.now() < pinUntilRef.current
+      if (arriving && autoScrollRef.current) scroller.scrollTop = scroller.scrollHeight
+    })
+    ro.observe(content)
+    return () => ro.disconnect()
+  }, [activeConversation?.id])
+
+  // Follow the reply as it streams, once per frame at most.
+  const messageCount = activeConversation?.messages.length ?? 0
+  useEffect(() => {
+    // Nothing to follow on the empty screen; scrolling it clipped the orb.
+    if (!autoScroll || messageCount === 0) return
+    const id = requestAnimationFrame(() => {
+      const el = scrollContainerRef.current
+      if (el) el.scrollTop = el.scrollHeight
+    })
+    return () => cancelAnimationFrame(id)
+  }, [activeConversation?.messages, autoScroll, messageCount])
 
   function normalizeConversation(c: RawConversation): Conversation {
     return {
@@ -414,15 +410,15 @@ function AIManagerPageInner() {
       } else {
         setBrain(null)
       }
-    } catch {}
+    } catch {} finally {
+      setBrainLoaded(true)
+    }
   }, [])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchConversations()
-     
     fetchBrain()
-     
     fetchApprovals()
   }, [fetchConversations, fetchBrain, fetchApprovals])
 
@@ -447,7 +443,7 @@ function AIManagerPageInner() {
         formData.append('file', file)
         const res = await fetch('/api/knowledge-base', { method: 'POST', body: formData })
         const json = await res.json()
-        if (!res.ok || !json.success) throw new Error(json.error || 'Failed to vectorise file')
+        if (!res.ok || !json.success) throw new Error(json.error || 'Failed to read the file')
         setPendingAttachments((prev) =>
           prev.map((att) =>
             att.id === tempId
@@ -455,10 +451,10 @@ function AIManagerPageInner() {
               : att
           )
         )
-        toast.success(json.chunkCount ? `Vectorised ${file.name} (${json.chunkCount} chunks)` : `Stored ${file.name}`)
+        toast.success(json.chunkCount ? `Read ${file.name} (${json.chunkCount} sections)` : `Stored ${file.name}`)
       } catch (err) {
         setPendingAttachments((prev) => prev.filter((att) => att.id !== tempId))
-        toast.error(err instanceof Error ? err.message : 'Failed to vectorise file')
+        toast.error(err instanceof Error ? err.message : 'Failed to read the file')
       } finally {
         setUploading(false)
       }
@@ -474,13 +470,26 @@ function AIManagerPageInner() {
       const json = await res.json()
       if (!res.ok || !json.success) throw new Error(json.error || 'Upload failed')
       setPendingAttachments((prev) => [...prev, { id: tempId, url: json.url, type: json.fileType, name: json.fileName }])
-      toast.success('File attached')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Upload failed')
     } finally {
       setUploading(false)
     }
   }
+
+  const updateLastAssistant = useCallback((fn: (m: Message) => Message) => {
+    setActiveConversation((prev) => {
+      if (!prev) return prev
+      const msgs = [...prev.messages]
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].role === 'assistant' && msgs[i].streaming) {
+          msgs[i] = fn(msgs[i])
+          break
+        }
+      }
+      return { ...prev, messages: msgs }
+    })
+  }, [])
 
   async function sendMessage() {
     if ((!input.trim() && pendingAttachments.length === 0) || sending) return
@@ -492,28 +501,42 @@ function AIManagerPageInner() {
 
     const message = input.trim() || (pendingAttachments.length > 0 ? 'Please analyze the attached image(s) and provide recommendations.' : '')
     setInput('')
-    const attachments = [...pendingAttachments]
+    const attachments = pendingAttachments.filter((a) => !a.loading).map(({ url, type, name }) => ({ url, type, name }))
     setPendingAttachments([])
     setAutoScroll(true)
+    autoScrollRef.current = true
     setSending(true)
+    sendingRef.current = true
 
     const controller = new AbortController()
     setAbortRef(controller)
 
     const existingId = activeConversation && activeConversation.id !== 'temp' ? activeConversation.id : null
-
+    const now = new Date().toISOString()
     const placeholder: Message = {
-      role: 'assistant', content: '', streaming: true, thinking: true, thinkingPhase: 'reasoning', toolCalls: [],
+      role: 'assistant', content: '', streaming: true, thinking: true, thinkingPhase: 'reasoning', toolCalls: [], createdAt: now,
     }
 
     const baseMessages: Message[] = existingId ? [...activeConversation!.messages] : []
-    baseMessages.push({ role: 'user', content: message, attachments: attachments.length > 0 ? attachments : undefined })
+    baseMessages.push({ role: 'user', content: message, attachments: attachments.length > 0 ? attachments : undefined, createdAt: now })
     baseMessages.push(placeholder)
 
     const conv: Conversation = existingId
       ? { ...activeConversation!, messages: baseMessages }
-      : { id: 'temp', title: message.slice(0, 50), messages: baseMessages, notes: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+      : { id: 'temp', title: message.slice(0, 50), messages: baseMessages, notes: [], createdAt: now, updatedAt: now }
     setActiveConversation(conv)
+
+    // Tokens arrive far faster than the screen refreshes. Collect them and
+    // apply once per frame; flush before any other event so order holds.
+    let pendingText = ''
+    let frame = 0
+    const flushText = () => {
+      if (frame) { cancelAnimationFrame(frame); frame = 0 }
+      if (!pendingText) return
+      const chunk = pendingText
+      pendingText = ''
+      updateLastAssistant((m) => ({ ...m, content: m.content + chunk, thinking: false }))
+    }
 
     try {
       const res = await fetch('/api/ai-manager/chat', {
@@ -546,15 +569,17 @@ function AIManagerPageInner() {
           if (!data) continue
           try {
             const ev = JSON.parse(data)
+            if (ev.t === 'text') {
+              pendingText += ev.v
+              if (!frame) frame = requestAnimationFrame(() => { frame = 0; flushText() })
+              continue
+            }
+            flushText()
 
             if (ev.t === 'init') {
-              if (activeConversation?.id === 'temp') {
-                setActiveConversation((prev) => prev ? { ...prev, id: ev.conversationId } : prev)
-              }
+              setActiveConversation((prev) => prev && prev.id === 'temp' ? { ...prev, id: ev.conversationId } : prev)
             } else if (ev.t === 'thinking') {
               updateLastAssistant((m) => ({ ...m, thinking: true, thinkingPhase: ev.phase }))
-            } else if (ev.t === 'text') {
-              updateLastAssistant((m) => ({ ...m, content: m.content + ev.v, thinking: false }))
             } else if (ev.t === 'tool_call') {
               updateLastAssistant((m) => ({
                 ...m,
@@ -590,8 +615,10 @@ function AIManagerPageInner() {
         }
       }
 
+      flushText()
       updateLastAssistant((m) => ({ ...m, streaming: false, thinking: false }))
     } catch (err) {
+      flushText()
       if (err instanceof Error && err.name === 'AbortError') {
         updateLastAssistant((m) => ({ ...m, streaming: false, thinking: false }))
       } else {
@@ -600,24 +627,11 @@ function AIManagerPageInner() {
       }
     } finally {
       setSending(false)
+      sendingRef.current = false
       setAbortRef(null)
       fetchConversations()
       fetchApprovals()
     }
-  }
-
-  function updateLastAssistant(fn: (m: Message) => Message) {
-    setActiveConversation((prev) => {
-      if (!prev) return prev
-      const msgs = [...prev.messages]
-      for (let i = msgs.length - 1; i >= 0; i--) {
-        if (msgs[i].role === 'assistant' && msgs[i].streaming) {
-          msgs[i] = fn(msgs[i])
-          break
-        }
-      }
-      return { ...prev, messages: msgs }
-    })
   }
 
   function stopSending() {
@@ -656,18 +670,20 @@ function AIManagerPageInner() {
     setQuestionAnswer('')
   }
 
-  function toggleToolExpanded(id: string) {
-    setExpandedTools((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
-
   function newConversation() {
     setActiveConversation(null)
     setNotes([])
+    setAnimateFrom(0)
+    setFocusToken((t) => t + 1)
+  }
+
+  function openConversation(c: Conversation) {
+    setActiveConversation(c)
+    setNotes(c.notes || [])
+    // History appears at once; only messages added from now on animate in.
+    setAnimateFrom(c.messages.length)
+    setAutoScroll(true)
+    setShowPanelSheet(false)
   }
 
   async function deleteConversation(id: string) {
@@ -689,7 +705,7 @@ function AIManagerPageInner() {
         body: JSON.stringify({ provider: config.provider, model: config.model }),
       })
       if (res.ok) {
-        toast.success('Model saved!')
+        toast.success('Model saved')
         setBrain((prev) => (prev ? { ...prev, model: config.model } : { ...config, configured: true }))
         setShowBrainDialog(false)
       } else {
@@ -701,397 +717,127 @@ function AIManagerPageInner() {
     }
   }
 
+  const messages = activeConversation?.messages ?? []
+  const isEmpty = messages.length === 0
+  const modelLabel = modelLabelOf(brain)
+  const statusText = sending ? 'Working…' : brain?.configured ? 'Ready' : brainLoaded ? 'Needs an AI key' : 'Loading…'
+  const statusDot = sending ? 'bg-primary animate-pulse' : brain?.configured ? 'bg-[var(--status-good)]' : 'bg-[var(--status-warning)]'
+
+  const panel = useMemo(() => (
+    <SidePanel
+      conversations={conversations}
+      activeId={activeConversation?.id ?? null}
+      onOpen={openConversation}
+      onDelete={deleteConversation}
+      approvals={approvals}
+      approvalBusy={approvalBusy}
+      onDecision={handleApprovalDecision}
+      notes={notes}
+      tab={panelTab}
+      onTab={setPanelTab}
+    />
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [conversations, activeConversation?.id, approvals, approvalBusy, notes, panelTab])
+
   return (
-      <div className="flex h-[calc(100dvh-7.5rem)] gap-4 md:h-[calc(100dvh-8rem)]">
-      {/* Main chat area */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-1 pb-3">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
-              <Brain className="h-5 w-5 text-primary-foreground" />
-            </div>
-            <div>
-              <h1 className="text-xl font-semibold tracking-tight">AI Manager</h1>
-              <p className="text-xs text-muted-foreground">
-                {activeConversation?.title || 'Start a new conversation'}
-              </p>
-            </div>
+    <div className="flex h-[calc(100dvh-5rem)] gap-4 md:h-[calc(100dvh-4rem)]">
+      {/* Conversation */}
+      <section aria-label="Conversation with the AI Manager" className="@container relative flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border bg-card elev-1">
+        <header className="flex items-center gap-3 border-b border-border px-4 py-3 sm:px-5">
+          <AiOrb size={34} working={sending} />
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-[15px] font-semibold leading-tight tracking-tight">
+              {activeConversation?.title && !isEmpty ? activeConversation.title : 'AI Manager'}
+            </h1>
+            <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground" aria-live="polite">
+              <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${statusDot}`} />
+              <span>{statusText}</span>
+              {modelLabel && <span className="hidden truncate @md:inline @2xl:hidden">· {modelLabel}</span>}
+            </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setShowKBDialog(true)} className="gap-1.5" aria-label="Knowledge base">
-              <BookOpen className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Knowledge Base</span>
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setShowBrainDialog(true)} className="gap-1.5" aria-label={brain ? `AI model: ${brainShortLabel(brain)}` : 'Configure AI model'}>
-              <Cpu className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{brain ? brainShortLabel(brain) : 'Configure'}</span>
-            </Button>
-            <Button variant="outline" size="sm" onClick={newConversation} className="gap-1.5" aria-label="New conversation">
-              <Plus className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">New</span>
+
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setShowBrainDialog(true)}
+              className="hidden h-9 items-center gap-1.5 rounded-full border border-border px-3 text-[13px] font-medium text-foreground/80 transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring @2xl:inline-flex"
+            >
+              <Cpu aria-hidden="true" className="h-3.5 w-3.5 text-muted-foreground" strokeWidth={1.75} />
+              {modelLabel ?? 'Choose model'}
+            </button>
+            <IconButton label="Knowledge base" onClick={() => setShowKBDialog(true)}>
+              <BookOpen aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={1.75} />
+            </IconButton>
+            <IconButton label={`Chats, approvals and notes${approvals.length ? ` (${approvals.length} waiting)` : ''}`} onClick={() => setShowPanelSheet(true)} className="relative xl:hidden">
+              <PanelRight aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={1.75} />
+              {approvals.length > 0 && <span aria-hidden="true" className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[var(--status-warning)] ring-2 ring-card" />}
+            </IconButton>
+            <Button size="sm" onClick={newConversation} className="ml-1 h-9 gap-1.5 rounded-full px-3.5" aria-label="New chat">
+              <Plus aria-hidden="true" className="h-4 w-4" />
+              <span className="hidden @md:inline">New chat</span>
             </Button>
           </div>
+        </header>
+
+        <div ref={scrollContainerRef} onScroll={handleScroll} className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain scrollbar-thin">
+          {isEmpty ? (
+            <ChatEmpty needsKey={brainLoaded && !brain?.configured} onPick={(p) => { setInput(p); setFocusToken((t) => t + 1) }} />
+          ) : (
+            <div ref={contentRef} className="mx-auto w-full max-w-3xl space-y-8 px-4 pb-6 pt-6 sm:px-6">
+              {messages.map((msg, i) => (
+                <MessageRow key={i} msg={msg} animate={i >= animateFrom} />
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Messages */}
-        <Card className="relative flex flex-1 flex-col overflow-hidden py-0">
-          <div className="relative flex-1 overflow-hidden">
-            <div ref={scrollContainerRef} onScroll={handleScroll} className="h-full overflow-y-auto scrollbar-thin">
-            <div className="space-y-6 p-4 pb-8">
-              {(!activeConversation || activeConversation.messages.length === 0) ? (
-                <div className="flex h-full min-h-[420px] flex-col items-center justify-center gap-6 px-4">
-                  <motion.div
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ duration: 0.4 }}
-                    className="flex h-20 w-20 items-center justify-center rounded-2xl bg-primary text-primary-foreground"
-                  >
-                    <Sparkles className="h-9 w-9" />
-                  </motion.div>
-                  <div className="text-center max-w-md">
-                    <h2 className="text-2xl font-semibold tracking-tight">AI Ads Manager</h2>
-                    <p className="text-sm text-muted-foreground mt-2 leading-relaxed">
-                      Ask anything about your Meta Ads — create campaigns, write ads in your language, review performance, or get strategy advice.
-                    </p>
-                  </div>
-                  <div className="grid w-full max-w-xl grid-cols-1 gap-3 sm:grid-cols-2">
-                    {suggestions.map((s, i) => (
-                      <motion.button
-                        key={i}
-                        initial={{ opacity: 0, y: 12 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: i * 0.06 }}
-                        onClick={() => { setInput(s.text) }}
-                        className="group flex items-start gap-3 rounded-2xl border border-border/40 bg-background/40 p-4 min-w-0 text-left text-sm transition-[background-color,border-color,box-shadow,transform] duration-200 hover:bg-primary/5 hover:border-primary/30 hover:shadow-md hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:hover:translate-y-0"
-                      >
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                          <s.icon className="h-4 w-4" />
-                        </div>
-                        <span className="pt-1 text-foreground/90 group-hover:text-foreground transition-colors">{s.text}</span>
-                      </motion.button>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <AnimatePresence>
-                  {activeConversation.messages.map((msg, i) => (
-                    <motion.div
-                      key={i}
-                      initial={{ opacity: 0, y: 12 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.25 }}
-                      className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                    >
-                      {msg.role === 'assistant' && (
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary mt-1">
-                          <Brain className="h-4 w-4" />
-                        </div>
-                      )}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => scrollToBottom(true)}
+            aria-label="Scroll to the latest message"
+            tabIndex={showScrollButton ? 0 : -1}
+            aria-hidden={!showScrollButton}
+            className={`absolute -top-12 left-1/2 z-10 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-card text-foreground elev-2 transition-[opacity,transform] duration-200 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+              showScrollButton ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-2 opacity-0'
+            }`}
+          >
+            <ArrowDown aria-hidden="true" className="h-4 w-4" />
+          </button>
+          <ChatComposer
+            value={input}
+            onChange={setInput}
+            onSend={sendMessage}
+            onStop={stopSending}
+            onAttach={handleFileUpload}
+            onRemoveAttachment={(id) => setPendingAttachments((prev) => prev.filter((a) => a.id !== id))}
+            attachments={pendingAttachments}
+            sending={sending}
+            uploading={uploading}
+            disabled={brainLoaded && !brain?.configured}
+            modelLabel={null}
+            focusToken={focusToken}
+          />
+        </div>
+      </section>
 
-                      <div className={`max-w-[88%] sm:max-w-[80%] ${msg.role === 'user' ? 'order-first' : ''}`}>
-                        {msg.role === 'user' ? (
-                          <div className="flex flex-col items-end gap-2">
-                            <div className="rounded-2xl rounded-tr-sm bg-primary px-4 py-2.5 text-sm text-primary-foreground">
-                              <p className="whitespace-pre-wrap leading-relaxed">{displayUserContent(msg.content)}</p>
-                            </div>
-                            {msg.attachments && msg.attachments.length > 0 && (
-                              <div className="flex flex-wrap gap-2 justify-end">
-                                {msg.attachments.map((att, j) => (
-                                  <div key={j} className="relative rounded-xl overflow-hidden border border-white/20 shadow-sm">
-                                    {att.type.startsWith('image/') ? (
-                                      <Image src={att.url} alt={att.name} width={64} height={64} className="h-16 w-16 object-cover" />
-                                    ) : (
-                                      <div className="flex items-center gap-2 rounded-xl bg-background/50 p-2 h-16 w-32">
-                                        <Paperclip className="h-4 w-4 text-muted-foreground shrink-0" />
-                                        <span className="text-xs text-muted-foreground truncate">{att.name}</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="space-y-2.5">
-                            {/* Thinking indicator */}
-                            {msg.thinking && !cleanAssistantContent(msg.content) && (!msg.toolCalls || msg.toolCalls.length === 0) && (
-                              <ThinkingIndicator phase={msg.thinkingPhase} />
-                            )}
+      {/* Chats, approvals, notes */}
+      <aside aria-label="Chats, approvals and notes" className="hidden w-80 shrink-0 overflow-hidden rounded-2xl border border-border bg-card elev-1 xl:flex xl:flex-col">
+        {panel}
+      </aside>
 
-                            {/* Text content */}
-                            {cleanAssistantContent(msg.content) && (
-                              <div className="rounded-2xl rounded-tl-sm border border-border bg-card px-4 py-3">
-                                <div className="prose prose-sm dark:prose-invert max-w-none prose-headings:my-2 prose-p:my-1.5 prose-ul:my-1.5 prose-pre:my-2 prose-code:text-xs prose-code:before:content-none prose-code:after:content-none">
-                                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-                                    {cleanAssistantContent(msg.content)}
-                                  </ReactMarkdown>
-                                </div>
-                                {msg.streaming && !msg.thinking && (
-                                  <span className="ml-0.5 inline-block h-4 w-[3px] animate-pulse rounded-full bg-primary align-text-bottom" />
-                                )}
-                              </div>
-                            )}
+      <Dialog open={showPanelSheet} onOpenChange={setShowPanelSheet}>
+        <DialogContent className="flex h-[80dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
+          <DialogHeader className="border-b border-border px-4 py-3">
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <MessagesSquare aria-hidden="true" className="h-4 w-4 text-muted-foreground" />
+              Chats, approvals and notes
+            </DialogTitle>
+          </DialogHeader>
+          <div className="min-h-0 flex-1">{panel}</div>
+        </DialogContent>
+      </Dialog>
 
-                            {/* Tool calls */}
-                            {msg.toolCalls && msg.toolCalls.length > 0 && (
-                              <div className="space-y-1.5 pl-1">
-                                {msg.toolCalls.map((tc) => (
-                                  <ToolCard
-                                    key={tc.id}
-                                    toolCall={tc}
-                                    expanded={expandedTools.has(tc.id)}
-                                    onToggle={() => toggleToolExpanded(tc.id)}
-                                  />
-                                ))}
-                              </div>
-                            )}
-
-                            {/* Inline images from completed tool calls (like ChatGPT) */}
-                            {msg.toolCalls && msg.toolCalls.length > 0 && !msg.streaming && (
-                              <InlineImages toolCalls={msg.toolCalls} />
-                            )}
-
-                            {/* Thinking again (between tool rounds) */}
-                            {msg.thinking && (cleanAssistantContent(msg.content) || (msg.toolCalls && msg.toolCalls.length > 0)) && (
-                              <ThinkingIndicator phase={msg.thinkingPhase} compact />
-                            )}
-
-                          </div>
-                        )}
-                      </div>
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-              )}
-            </div>
-            </div>
-            <AnimatePresence>
-              {showScrollButton && (
-                <motion.button
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 10 }}
-                  onClick={() => scrollToBottom(true)}
-                  className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-border bg-card shadow-lg hover:scale-110 transition-transform"
-                >
-                  <ChevronDown className="h-4 w-4 text-primary" />
-                </motion.button>
-              )}
-            </AnimatePresence>
-          </div>
-
-          {/* Pending attachments */}
-          {pendingAttachments.length > 0 && (
-            <div className="border-t border-border/50 px-4 pt-2 pb-1 flex flex-wrap gap-2">
-              {pendingAttachments.map((att, i) => (
-                <div key={att.id} className="relative group rounded-lg overflow-hidden border border-border/30">
-                  {att.loading ? (
-                    <div className="flex items-center justify-center bg-background/50 p-2 h-16 w-32">
-                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-2" />
-                      <span className="text-xs text-muted-foreground truncate">Vectorising…</span>
-                    </div>
-                  ) : att.type.startsWith('image/') ? (
-                    <Image src={att.url} alt={att.name} width={64} height={64} className="h-16 w-16 object-cover" />
-                  ) : (
-                    <div className="flex items-center gap-1 bg-background/50 p-2 h-16 w-32">
-                      <Paperclip className="h-3 w-3 text-muted-foreground shrink-0" />
-                      <span className="text-xs text-muted-foreground truncate">{att.name}</span>
-                    </div>
-                  )}
-                  {!att.loading && (
-                    <button
-                      onClick={() => setPendingAttachments((prev) => prev.filter((_, idx) => idx !== i))}
-                      className="absolute top-0 right-0 rounded-bl-lg bg-black/60 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <X className="h-3 w-3 text-white" />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Input bar */}
-          <div className="border-t border-border p-3">
-            <div className="flex items-end gap-2 rounded-xl border border-input bg-card p-2 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*,.pdf,.txt,.csv,.json"
-                className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); e.target.value = '' }}
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="shrink-0 h-9 w-9 rounded-xl hover:bg-primary/10"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading || sending}
-              >
-                {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4 text-muted-foreground" />}
-              </Button>
-              <Textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    sendMessage()
-                  }
-                }}
-                aria-label="Message the AI Manager"
-                placeholder={brain?.configured ? 'Ask AI to manage your ads…' : 'Configure AI brain to start'}
-                disabled={sending || !brain?.configured}
-                className="min-h-[36px] max-h-32 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0 px-2 py-2 text-sm"
-                rows={1}
-              />
-              {sending ? (
-                <Button
-                  variant="destructive"
-                  size="icon"
-                  onClick={stopSending}
-                  aria-label="Stop generating"
-                  className="shrink-0 h-10 w-10 rounded-xl"
-                >
-                  <Square className="h-4 w-4" />
-                </Button>
-              ) : (
-                <Button
-                  onClick={sendMessage}
-                  aria-label="Send message"
-                  disabled={(!input.trim() && pendingAttachments.length === 0) || !brain?.configured}
-                  className="shrink-0 h-10 w-10 rounded-lg p-0"
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-          </div>
-        </Card>
-      </div>
-
-      {/* Right sidebar */}
-      <div className="hidden w-80 shrink-0 space-y-3 overflow-y-auto lg:block pr-1">
-        {/* Approvals (guardrail queue) */}
-        {approvals.length > 0 && (
-          <Card className="border-[var(--status-warning)]/40 shadow-none">
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/15">
-                  <ShieldAlert className="h-3.5 w-3.5 text-amber-500" />
-                </div>
-                <CardTitle className="text-sm">Pending Approvals</CardTitle>
-                <Badge variant="secondary" className="ml-auto text-xs">{approvals.length}</Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {approvals.map((a) => (
-                <ApprovalCard key={a.id} approval={a} busy={approvalBusy === a.id} onDecision={handleApprovalDecision} />
-              ))}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Notes */}
-        <Card className="shadow-none">
-          <CardHeader className="pb-2">
-            <div className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/15">
-                <StickyNote className="h-3.5 w-3.5 text-amber-500" />
-              </div>
-              <CardTitle className="text-sm">AI Notes</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {notes.length === 0 ? (
-              <p className="text-xs text-muted-foreground">Notes from AI will appear here</p>
-            ) : (
-              notes.map((note) => (
-                <div key={note.id} className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-2.5">
-                  <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">{note.title}</p>
-                  <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap leading-relaxed">{note.content}</p>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-
-        {/* History toggle + list */}
-        <Card className="shadow-none">
-          <CardHeader className="pb-2">
-            <button
-              onClick={() => setShowHistory(!showHistory)}
-              className="flex w-full items-center justify-between text-left"
-            >
-              <div className="flex items-center gap-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10">
-                  <History className="h-3.5 w-3.5 text-primary" />
-                </div>
-                <CardTitle className="text-sm">Conversations</CardTitle>
-              </div>
-              <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${showHistory ? 'rotate-180' : ''}`} />
-            </button>
-          </CardHeader>
-          {showHistory && (
-            <CardContent className="space-y-1 pt-0">
-              {conversations.length === 0 ? (
-                <p className="text-xs text-muted-foreground py-2">No conversations yet</p>
-              ) : (
-                conversations.map((c) => (
-                  <div
-                    key={c.id}
-                    className={`group flex items-center justify-between rounded-xl p-2.5 text-xs cursor-pointer transition-colors ${
-                      activeConversation?.id === c.id ? 'bg-primary/10 text-primary' : 'hover:bg-muted'
-                    }`}
-                    onClick={() => { setActiveConversation(c); setNotes(c.notes || []); setAutoScroll(true) }}
-                  >
-                    <span className="truncate flex-1 font-medium">{c.title}</span>
-                    <button
-                      type="button"
-                      aria-label={`Delete conversation: ${c.title}`}
-                      onClick={(e) => { e.stopPropagation(); deleteConversation(c.id) }}
-                      className="ml-1.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:bg-[var(--status-critical)]/10 hover:text-[var(--status-critical-ink)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(hover:none)]:opacity-100"
-                    >
-                      <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          )}
-        </Card>
-
-        {/* Tools */}
-        <Card className="shadow-none">
-          <CardHeader className="pb-2">
-            <div className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/15">
-                <Wrench className="h-3.5 w-3.5 text-emerald-500" />
-              </div>
-              <CardTitle className="text-sm">Available Tools</CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-1.5">
-              {ALL_TOOL_NAMES.slice(0, 18).map((tool) => {
-                const Icon = toolIcons[tool] || Wrench
-                return (
-                  <Badge key={tool} variant="secondary" className="text-xs font-mono gap-1 py-0.5">
-                    <Icon className="h-2.5 w-2.5" />
-                    {tool}
-                  </Badge>
-                )
-              })}
-              {ALL_TOOL_NAMES.length > 18 && (
-                <Badge variant="outline" className="text-xs">+{ALL_TOOL_NAMES.length - 18} more</Badge>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Brain config dialog */}
       <BrainDialog
         open={showBrainDialog}
         brain={brain}
@@ -1099,24 +845,21 @@ function AIManagerPageInner() {
         onOpenChange={setShowBrainDialog}
       />
 
-      {/* Knowledge base dialog */}
       <KnowledgeBaseDialog open={showKBDialog} onOpenChange={setShowKBDialog} />
 
-      {/* AI question popup */}
+      {/* The agent asking the owner something mid-task */}
       <Dialog open={!!activeQuestion} onOpenChange={(open) => { if (!open) skipQuestion() }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <HelpCircle className="h-4 w-4" />
-              </div>
-              <DialogTitle>AI has a question</DialogTitle>
+            <div className="flex items-center gap-3">
+              <AiOrb size={32} />
+              <DialogTitle>The AI Manager has a question</DialogTitle>
             </div>
-            <DialogDescription className="pt-2 text-sm text-foreground/80">
+            <DialogDescription className="pt-2 text-[15px] leading-relaxed text-foreground/85">
               {activeQuestion?.question}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 py-2">
+          <div className="space-y-3 py-1">
             <Textarea
               autoFocus
               value={questionAnswer}
@@ -1127,22 +870,18 @@ function AIManagerPageInner() {
                   submitQuestionAnswer()
                 }
               }}
-              placeholder={activeQuestion?.placeholder || 'Type your answer...'}
-              className="min-h-[60px] max-h-32 resize-none"
+              aria-label="Your answer"
+              placeholder={activeQuestion?.placeholder || 'Type your answer…'}
+              className="min-h-[72px] max-h-40 resize-none text-[15px]"
               rows={2}
             />
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={skipQuestion} disabled={submittingAnswer}>
+              <Button variant="ghost" onClick={skipQuestion} disabled={submittingAnswer}>
                 Skip
               </Button>
-              <Button
-                size="sm"
-                onClick={submitQuestionAnswer}
-                aria-label="Send answer"
-                disabled={!questionAnswer.trim() || submittingAnswer}
-                className=""
-              >
-                {submittingAnswer ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              <Button onClick={submitQuestionAnswer} disabled={!questionAnswer.trim() || submittingAnswer} className="gap-1.5">
+                {submittingAnswer ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <Send aria-hidden="true" className="h-4 w-4" />}
+                Send answer
               </Button>
             </div>
           </div>
@@ -1152,217 +891,17 @@ function AIManagerPageInner() {
   )
 }
 
-const ALL_TOOL_NAMES = [
-  'ask_user_question',
-  'get_local_campaigns', 'get_local_creatives', 'get_local_campaign', 'get_dashboard_summary',
-  'search_knowledge_base',
-  'create_local_campaign', 'update_local_campaign', 'delete_local_campaign',
-  'create_local_creative', 'update_local_creative', 'delete_local_creative',
-  'generate_ad_image', 'generate_creative_with_image', 'review_creative', 'improve_creative',
-  // Mastermind
-  'get_strategy', 'update_strategy', 'get_memory', 'add_memory',
-  'sync_campaign_insights', 'sync_from_meta', 'publish_campaign_to_meta', 'set_campaign_status',
-  'get_daily_metrics', 'get_performance_trend', 'get_account_balance', 'test_meta_connection',
-  'list_scheduled_jobs', 'create_scheduled_job', 'update_scheduled_job', 'delete_scheduled_job',
-  'generate_chart', 'generate_report', 'transcribe_audio', 'speak',
-  // Meta (via stateless client / MCP)
-  'list_campaigns', 'create_campaign', 'pause_campaign', 'resume_campaign',
-  'get_insights', 'compare_performance', 'list_creatives', 'create_ad_creative',
-  'preview_ad', 'list_audiences', 'create_custom_audience', 'estimate_audience_size',
-  'validate_token',
-]
-
-function extractImagesFromToolCalls(toolCalls: ToolCallInfo[]): Array<{ url: string; toolName: string; message?: string }> {
-  const images: Array<{ url: string; toolName: string; message?: string }> = []
-  for (const tc of toolCalls) {
-    if (tc.status !== 'done' || !tc.result || tc.error) continue
-    const resultObj = typeof tc.result === 'object' && tc.result !== null
-      ? tc.result as Record<string, unknown>
-      : null
-    if (!resultObj) continue
-    const message = resultObj.message as string | undefined
-    // Direct imageUrl (generate_ad_image)
-    const directUrl = resultObj.imageUrl as string | undefined
-    if (directUrl) {
-      images.push({ url: directUrl, toolName: tc.name, message })
-      continue
-    }
-    // Nested creative.imageUrl (generate_creative_with_image)
-    const creative = resultObj.creative as Record<string, unknown> | undefined
-    const creativeUrl = creative?.imageUrl as string | undefined
-    if (creativeUrl) {
-      images.push({ url: creativeUrl, toolName: tc.name, message })
-    }
-  }
-  return images
-}
-
-function InlineImages({ toolCalls }: { toolCalls: ToolCallInfo[] }) {
-  const images = extractImagesFromToolCalls(toolCalls)
-  if (images.length === 0) return null
+function IconButton({ label, onClick, children, className = '' }: { label: string; onClick: () => void; children: React.ReactNode; className?: string }) {
   return (
-    <div className="space-y-3">
-      {images.map((img, i) => (
-        <div key={i} className="rounded-xl border border-border bg-card overflow-hidden">
-          <Image
-            src={img.url}
-            alt="AI generated ad creative"
-            width={800}
-            height={420}
-            className="w-full max-h-[420px] object-contain bg-muted/20"
-            loading="lazy"
-          />
-          {img.message && (
-            <p className="px-3 py-2 text-xs text-muted-foreground border-t border-border/30">{img.message}</p>
-          )}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function ThinkingIndicator({ phase, compact }: { phase?: string; compact?: boolean }) {
-  const label = phase === 'analyzing' ? 'Analyzing results…' : 'Thinking…'
-  return (
-    <div className={`flex items-center gap-2 ${compact ? 'pt-1' : 'py-1'}`}>
-      <div className="flex gap-1">
-        {[0, 1, 2].map((k) => (
-          <motion.div
-            key={k}
-            animate={{ y: [0, -6, 0], opacity: [0.4, 1, 0.4] }}
-            transition={{ repeat: Infinity, duration: 1, delay: k * 0.2 }}
-            className="h-2 w-2 rounded-full bg-primary"
-          />
-        ))}
-      </div>
-      <span className="text-sm text-muted-foreground">{label}</span>
-    </div>
-  )
-}
-
-function ToolCard({ toolCall, expanded, onToggle }: {
-  toolCall: ToolCallInfo
-  expanded: boolean
-  onToggle: () => void
-}) {
-  const [showRaw, setShowRaw] = useState(false)
-  const Icon = toolIcons[toolCall.name] || Wrench
-  const resultObj = typeof toolCall.result === 'object' && toolCall.result !== null
-    ? toolCall.result as Record<string, unknown>
-    : null
-  const imageUrl = resultObj?.imageUrl as string | undefined
-  const chartSpec = resultObj?.chart as { chartType: string; data: Array<Record<string, unknown>>; xKey: string; yKeys: Array<{ key: string; label: string; color?: string }>; title: string } | undefined
-  const audioUrl = resultObj?.audioUrl as string | undefined
-  const needsApproval = Boolean(resultObj?.needsApproval)
-  const reportMd = resultObj?.report as string | undefined
-
-  const friendlyMessage =
-    (resultObj?.message as string | undefined) ||
-    (resultObj?.summary as string | undefined) ||
-    (resultObj?.transcript as string | undefined)
-
-  const statusLabel =
-    toolCall.status === 'pending' ? 'Running' :
-    toolCall.status === 'error' ? 'Failed' : 'Done'
-
-  const statusColor =
-    toolCall.status === 'pending' ? 'text-amber-700 dark:text-amber-300' :
-    toolCall.status === 'error' ? 'text-[var(--status-critical-ink)] dark:text-red-300' : 'text-[var(--status-good-ink)] dark:text-green-300'
-
-  return (
-    <div className="rounded-lg border border-border/30 bg-muted/20 overflow-hidden transition-colors hover:border-border/50">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        className="flex min-h-10 w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-      >
-        <div className={`flex h-5 w-5 items-center justify-center rounded-md ${statusColor} bg-current/10`}>
-          {toolCall.status === 'pending' ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : toolCall.status === 'error' ? (
-            <XCircle className="h-3 w-3" />
-          ) : (
-            <CheckCircle2 className="h-3 w-3" />
-          )}
-        </div>
-        <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-        <span className="min-w-0 truncate text-xs font-medium" title={toolCall.name}>{humanizeTool(toolCall.name)}</span>
-        <span className={`ml-auto shrink-0 text-xs font-medium ${statusColor}`}>{statusLabel}</span>
-        <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${expanded ? 'rotate-180' : ''}`} />
-      </button>
-
-      <AnimatePresence>
-        {expanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="border-t border-border/20 overflow-hidden"
-          >
-            <div className="px-3 py-2.5 space-y-2.5">
-              {/* Friendly result summary */}
-              {toolCall.error ? (
-                <div role="status" className="rounded-md border border-[var(--status-critical)]/25 bg-[var(--status-critical)]/5 px-2.5 py-2">
-                  <p className="text-xs text-[var(--status-critical-ink)] dark:text-red-300">{toolCall.error}</p>
-                </div>
-              ) : needsApproval ? (
-                <div className="space-y-1 rounded-md border border-[var(--status-warning)]/30 bg-[var(--status-warning)]/5 px-2.5 py-2">
-                  <div className="flex items-center gap-2">
-                    <ShieldAlert aria-hidden="true" className="h-3.5 w-3.5 text-amber-700 dark:text-amber-300" />
-                    <span className="text-xs font-semibold">Needs your approval</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground">{friendlyMessage || 'Spend-affecting action queued.'}</p>
-                </div>
-              ) : audioUrl ? (
-                <div className="space-y-1.5">
-                  <p className="text-xs text-muted-foreground flex items-center gap-1"><Volume2 className="h-3 w-3" /> {friendlyMessage || 'Voice reply'}</p>
-                  <audio controls src={audioUrl} className="w-full h-8" />
-                </div>
-              ) : chartSpec ? (
-                <ChartRenderer spec={chartSpec} />
-              ) : reportMd ? (
-                <div className="rounded-md bg-muted/40 p-2.5 max-h-60 overflow-y-auto scrollbar-thin">
-                  <div className="prose prose-xs dark:prose-invert max-w-none">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{reportMd}</ReactMarkdown>
-                  </div>
-                </div>
-              ) : imageUrl ? (
-                <div className="space-y-1.5">
-                  <p className="text-xs text-muted-foreground">{friendlyMessage || 'Image generated'}</p>
-                  <Image src={imageUrl} alt="Generated" width={600} height={256} className="rounded-md max-w-full max-h-52 object-cover border border-border/30" />
-                </div>
-              ) : friendlyMessage ? (
-                <div className="rounded-md border border-[var(--status-good)]/25 bg-[var(--status-good)]/5 px-2.5 py-2">
-                  <p className="text-xs text-muted-foreground">{friendlyMessage}</p>
-                </div>
-              ) : null}
-
-              {/* Raw output toggle */}
-              {toolCall.result !== undefined && (
-                <div className="pt-1">
-                  <button
-                    type="button"
-                    aria-expanded={showRaw}
-                    onClick={(e) => { e.stopPropagation(); setShowRaw((v) => !v) }}
-                    className="text-xs text-muted-foreground hover:text-primary underline decoration-dashed underline-offset-2"
-                  >
-                    {showRaw ? 'Hide raw output' : 'Show raw output'}
-                  </button>
-                  {showRaw && (
-                    <pre className="mt-1.5 text-xs bg-muted/60 rounded-md p-2 overflow-x-auto max-h-48 scrollbar-thin border border-border/20">
-                      {typeof toolCall.result === 'string'
-                        ? toolCall.result
-                        : JSON.stringify(toolCall.result, null, 2)}
-                    </pre>
-                  )}
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className={`flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${className}`}
+    >
+      {children}
+    </button>
   )
 }
 
