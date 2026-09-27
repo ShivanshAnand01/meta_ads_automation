@@ -76,7 +76,8 @@ export async function POST(request: Request) {
         campaignId: body.campaignId ?? null,
         cronExpression: body.cronExpression,
         status: body.status ?? 'active',
-        config: body.config ?? null,
+        // The column is text; store objects as JSON so the runner can parse them.
+        config: body.config == null ? null : typeof body.config === 'string' ? body.config : JSON.stringify(body.config),
         nextRunAt,
       },
     })

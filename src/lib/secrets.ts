@@ -20,11 +20,27 @@ function isSentinel(v: string | null | undefined): boolean {
   return !!v && v.startsWith(VAULT_SENTINEL)
 }
 
-/** Read one of the current user's secrets from Vault (RLS-scoped). */
-export async function getUserSecret(key: string): Promise<string | null> {
+/**
+ * Read a user's secret from Vault.
+ *
+ * With a browser session the RLS-scoped RPC resolves the owner from auth.uid().
+ * Autonomous runs (Vercel Cron, the n8n heartbeat, the runner route) have no
+ * session, so that path returns nothing. When the caller knows the user id and
+ * the service role is configured, fall back to get_user_secret_for, which is
+ * executable by the service role only.
+ */
+export async function getUserSecret(key: string, userId?: string): Promise<string | null> {
   try {
     const supabase = await getSupabaseServer()
     const { data, error } = await supabase.rpc('get_user_secret', { p_key: key })
+    if (!error && data) return data as string
+  } catch {
+    // No request scope (cron, scripts): cookies() throws. Fall through.
+  }
+  if (!userId || !hasServiceRoleKey()) return null
+  try {
+    const client = createSupabaseServiceClient()
+    const { data, error } = await client.rpc('get_user_secret_for', { p_user_id: userId, p_key: key })
     if (error || !data) return null
     return data as string
   } catch {
@@ -46,12 +62,12 @@ export async function setUserSecret(userId: string, key: string, value: string, 
   }
 }
 
-/** Clear a secret from Vault. */
+/** Clear a secret from Vault (service role). */
 export async function clearUserSecret(userId: string, key: string): Promise<void> {
   if (!hasServiceRoleKey()) return
   try {
     const client = createSupabaseServiceClient()
-    await client.from('vault.secrets').delete().eq('name', `${userId}__${key}`)
+    await client.rpc('delete_user_secret', { p_user_id: userId, p_key: key })
   } catch {}
 }
 
@@ -65,10 +81,12 @@ export async function resolveSecrets<T extends Record<string, any>>(
   fields: Array<{ column: keyof T; vaultKey: string }>,
 ): Promise<T> {
   const out = { ...row }
+  // Rows carry their owner; passing it lets session-less callers resolve too.
+  const ownerId = typeof (row as any).userId === 'string' ? (row as any).userId as string : undefined
   for (const f of fields) {
     const colVal = out[f.column] as string | null | undefined
     if (isSentinel(colVal)) {
-      const real = await getUserSecret(f.vaultKey)
+      const real = await getUserSecret(f.vaultKey, ownerId)
       if (real != null) (out as any)[f.column] = real
       else (out as any)[f.column] = null
     }

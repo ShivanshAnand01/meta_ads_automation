@@ -52,7 +52,6 @@ async function main() {
 
   await withServiceClient(service, async () => {
     const { getMetaConnection, getMetaClientForUser } = await import('@/lib/meta/user-client')
-    const ops = await import('@/lib/meta/ops')
     const { tryMcp } = await import('@/lib/meta/mcp-bridge')
     const { executeTool } = await import('@/lib/ai/tools')
     const { getProfile, buildProfileContext } = await import('@/lib/ai/profile')

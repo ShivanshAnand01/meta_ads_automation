@@ -48,6 +48,17 @@ function isAuthorized(request: Request): boolean {
   return false
 }
 
+function parseJobConfig(raw: unknown): { prompt?: string } {
+  if (!raw) return {}
+  if (typeof raw === 'object') return raw as { prompt?: string }
+  try {
+    const parsed = JSON.parse(String(raw))
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
 function nextRunFrom(cronExpression?: string | null): Date {
   if (cronExpression) {
     try {
@@ -104,7 +115,9 @@ async function handle(request: Request): Promise<Response> {
         const result = await runRoutine({
           userId: job.userId,
           routine: job.type as Routine,
-          customPrompt: job.config?.prompt,
+          // config is a text column holding JSON; reading .prompt off the raw
+          // string was always undefined, so custom jobs ran with no prompt.
+          customPrompt: parseJobConfig(job.config).prompt,
           jobId: job.id,
         })
         results.push({ jobId: job.id, userId: job.userId, routine: job.type, ...result })

@@ -11,6 +11,30 @@ const PUBLIC_PATHS = new Set([
 
 const PUBLIC_PREFIXES = ['/api/auth/', '/api/status', '/_next/', '/favicon.ico']
 
+/**
+ * Machine callers (Vercel Cron, the n8n heartbeat, the runner) carry a shared
+ * secret instead of a Supabase session. Without this check the proxy answered
+ * them with 401 before the route could validate the secret, so no scheduled
+ * run ever reached /api/cron/run-jobs. The route re-validates in full; this is
+ * only the gate that lets the request get there.
+ */
+function safeEqual(a: string, b: string): boolean {
+  if (!a || !b || a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
+}
+
+function hasMachineSecret(request: NextRequest): boolean {
+  const cron = process.env.CRON_SECRET || ''
+  const runner = process.env.RUNNER_SECRET || ''
+  const bearer = (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '')
+  const runnerHeader = request.headers.get('x-runner-secret') || ''
+  return (cron.length > 0 && safeEqual(bearer, cron)) || (runner.length > 0 && safeEqual(runnerHeader, runner))
+}
+
+const MACHINE_ROUTES = ['/api/cron/', '/api/ai-manager/autonomous']
+
 function isPublic(pathname: string): boolean {
   if (PUBLIC_PATHS.has(pathname)) return true
   if (PUBLIC_PREFIXES.some((p) => pathname.startsWith(p))) return true
@@ -29,6 +53,10 @@ export async function proxy(request: NextRequest) {
 
   // Don't run auth on the login/callback/public routes themselves.
   if (isPublic(pathname)) {
+    return NextResponse.next({ request })
+  }
+
+  if (MACHINE_ROUTES.some((p) => pathname.startsWith(p)) && hasMachineSecret(request)) {
     return NextResponse.next({ request })
   }
 
@@ -64,7 +92,9 @@ export async function proxy(request: NextRequest) {
     error,
   } = await supabase.auth.getUser()
 
-  if (error) {
+  // A logged-out visitor has no session; that is the normal case, not an
+  // error, and it was the only entry in production's error log.
+  if (error && error.name !== 'AuthSessionMissingError') {
     console.error('[proxy] getUser error', error.message)
   }
 

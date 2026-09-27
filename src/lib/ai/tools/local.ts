@@ -586,7 +586,7 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
           config: args.config ? (typeof args.config === 'string' ? args.config : JSON.stringify(args.config)) : null,
         },
       }) as any
-      return { success: true, job, message: `Scheduled "${args.type}" (${args.cronExpression}). It runs via Supabase pg_cron once configured.` }
+      return { success: true, job, message: `Scheduled "${args.type}" (${args.cronExpression}). It runs on the next scheduler tick after its due time.` }
     }
     case 'update_scheduled_job': {
       const data: Record<string, unknown> = {}
