@@ -1,4 +1,5 @@
 import { db } from '@/lib/db/supabase-db'
+import { redactSecrets } from '@/lib/redact'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -19,8 +20,8 @@ export async function logAction(entry: AuditEntry): Promise<void> {
         userId: entry.userId,
         conversationId: entry.conversationId || null,
         toolName: entry.toolName,
-        arguments: entry.arguments ? JSON.stringify(entry.arguments) : null,
-        result: entry.result != null ? JSON.stringify(entry.result) : null,
+        arguments: entry.arguments ? JSON.stringify(redactSecrets(entry.arguments)) : null,
+        result: entry.result != null ? JSON.stringify(redactSecrets(entry.result)) : null,
         status: entry.status || 'success',
         actor: entry.actor || 'agent',
       },

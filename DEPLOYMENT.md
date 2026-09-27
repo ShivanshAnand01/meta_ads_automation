@@ -69,9 +69,13 @@ SQL editor:
   cron and other session-less runs can read a user's Meta token and AI key.
 - `0005_integrations.sql` — the `integrations` table behind Setup →
   Connections (owner RLS, explicit grants; secrets live in Vault).
+- `0006_lock_definer_functions.sql` — revokes `anon` from the SECURITY
+  DEFINER functions that take a user id and guards each with
+  `caller_may_act_for()`, which closed cross-tenant reads of the action log,
+  memory, knowledge base and strategy through the public anon key.
 
-All five are applied to the live database (0001–0002 on 2026-08-30, 0003 on
-2026-09-05, 0004–0005 on 2026-09-27).
+All six are applied to the live database (0001–0002 on 2026-08-30, 0003 on
+2026-09-05, 0004–0006 on 2026-09-27).
 
 The SQL editor works, and so does the Prisma CLI against `DIRECT_URL` (it
 reads `prisma.config.ts`):

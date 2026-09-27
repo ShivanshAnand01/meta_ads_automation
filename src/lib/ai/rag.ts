@@ -1,4 +1,4 @@
-import { getSupabaseServer } from '@/lib/supabase/server'
+import { getScopedSupabase } from '@/lib/db/supabase-db'
 import type { AIProviderType } from './types'
 
 const CHUNK_SIZE = 800
@@ -89,7 +89,7 @@ export async function ingestDocument(params: {
   embeddingKey?: string | null
 }): Promise<{ documentId: string; chunkCount: number; embedded: boolean }> {
   const { userId, title, content, sourceType, filePath, fileType, provider, apiKey, baseUrl, embeddingKey } = params
-  const supabase = await getSupabaseServer()
+  const supabase = await getScopedSupabase()
 
   const { data: doc, error: docError } = await supabase
     .from('knowledge_documents')
@@ -155,7 +155,7 @@ export async function retrieveRelevant(params: {
   topK?: number
 }): Promise<Array<{ content: string; title: string; similarity: number }>> {
   const { userId, query, provider, apiKey, baseUrl, embeddingKey, topK = 5 } = params
-  const supabase = await getSupabaseServer()
+  const supabase = await getScopedSupabase()
 
   if (canGenerateEmbeddings(provider, apiKey, embeddingKey)) {
     const queryEmbedding = await generateEmbedding(query, provider, apiKey, baseUrl, embeddingKey)
@@ -215,7 +215,7 @@ export async function retrieveRelevant(params: {
 }
 
 export async function deleteDocument(userId: string, documentId: string): Promise<void> {
-  const supabase = await getSupabaseServer()
+  const supabase = await getScopedSupabase()
   const { error } = await supabase
     .from('knowledge_documents')
     .delete()
@@ -232,7 +232,7 @@ export async function listDocuments(userId: string): Promise<Array<{
   chunkCount: number
   createdAt: string
 }>> {
-  const supabase = await getSupabaseServer()
+  const supabase = await getScopedSupabase()
   const { data, error } = await supabase
     .from('knowledge_documents')
     .select('id, title, source_type, chunk_count, created_at')
@@ -259,7 +259,7 @@ export async function trackGeneratedImage(params: {
   size?: string
   style?: string
 }): Promise<void> {
-  const supabase = await getSupabaseServer()
+  const supabase = await getScopedSupabase()
   await supabase.from('generated_images').insert({
     user_id: params.userId,
     prompt: params.prompt,
@@ -278,7 +278,7 @@ export async function listGeneratedImages(userId: string): Promise<Array<{
   provider: string
   createdAt: string
 }>> {
-  const supabase = await getSupabaseServer()
+  const supabase = await getScopedSupabase()
   const { data, error } = await supabase
     .from('generated_images')
     .select('id, prompt, image_url, provider, created_at')

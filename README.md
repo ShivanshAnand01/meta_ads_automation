@@ -75,7 +75,7 @@ Storage) · Vercel (`bom1`, Mumbai) · `meta-ads-mcp` and `@modelcontextprotocol
 | Secrets | `src/lib/secrets.ts` (Vault; service-role read for session-less runs) |
 | Scheduler | `src/app/api/cron/run-jobs/route.ts` (Vercel Cron daily, or any external heartbeat with the runner secret) |
 | UI | `src/app/*/page.tsx` · `src/components/chat/*` (AI Manager chat) · `src/components/ui/metric.tsx` (page header, sections, tiles, sparkline) · `src/components/layout/sidebar.tsx` |
-| Database | `supabase/schema.sql` (fresh DB) · `supabase/migrations/0001…0005` (applied, in order) |
+| Database | `supabase/schema.sql` (fresh DB) · `supabase/migrations/0001…0006` (applied, in order) |
 | Tests and tooling | `tests/*.test.ts` (53, `npm test`) · `scripts/smoke-meta-readonly.ts` (live read-only Meta check) · `.github/workflows/ci.yml` |
 | Architecture diagrams | `docs/admanager-flowchart.html` (today) · `docs/admanager-target.html` (target flow) · `docs/admanager-agents.html` (multi-agent plan) |
 

@@ -1,5 +1,4 @@
-import { db } from '@/lib/db/supabase-db'
-import { getSupabaseServer } from '@/lib/supabase/server'
+import { db, getScopedSupabase } from '@/lib/db/supabase-db'
 import { generateEmbedding, canGenerateEmbeddings } from '@/lib/ai/rag'
 import type { AIProviderType } from '@/lib/ai/types'
 
@@ -86,7 +85,7 @@ export async function searchMemory(
   if (!queryEmbedding) return []
 
   try {
-    const supabase = await getSupabaseServer()
+    const supabase = await getScopedSupabase()
     const { data, error } = await supabase.rpc('match_memory', {
       p_user_id: userId,
       p_embedding: queryEmbedding,

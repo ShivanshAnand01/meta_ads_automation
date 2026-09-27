@@ -1,5 +1,4 @@
-import { getSupabaseServer } from '@/lib/supabase/server'
-import { db } from '@/lib/db/supabase-db'
+import { db, getScopedSupabase } from '@/lib/db/supabase-db'
 import { createAIProvider } from '@/lib/ai/factory'
 import { addMemory, type EmbedConfig } from '@/lib/ai/memory'
 import type { AIProviderType } from '@/lib/ai/types'
@@ -41,7 +40,7 @@ export async function runReflection(params: {
   // 1. Recent actions (what the manager actually did)
   let actionsText = ''
   try {
-    const supabase = await getSupabaseServer()
+    const supabase = await getScopedSupabase()
     const { data } = await supabase.rpc('recent_actions', { p_user_id: userId, p_limit: params.actionsLimit ?? 40 })
     actionsText = (data as any[] || [])
       .map((a, i) => `${i + 1}. [${a.status}] ${a.tool_name}(${(a.arguments || '').toString().slice(0, 120)}) → ${(a.result || '').toString().slice(0, 80)}`)
@@ -97,7 +96,7 @@ function pct(recent: number, prior: number): string {
 }
 
 async function computeDeltas(userId: string): Promise<{ recent: any; prior: any } | null> {
-  const supabase = await getSupabaseServer()
+  const supabase = await getScopedSupabase()
   const to = (d: Date) => d.toISOString().split('T')[0]
   const today = new Date()
   const r7 = new Date(); r7.setDate(r7.getDate() - 7)

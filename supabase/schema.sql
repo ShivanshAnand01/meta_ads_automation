@@ -356,6 +356,18 @@ as $$
   );
 $$;
 
+-- Helper: may the caller act for p_user_id? True for the service role, or a
+-- user signed in as p_user_id. Every SECURITY DEFINER function that takes a
+-- user id must check this (see migration 0006) — definer functions bypass RLS.
+create or replace function public.caller_may_act_for(p_user_id uuid)
+returns boolean
+language sql stable
+set search_path = public
+as $$
+  select coalesce(current_setting('request.jwt.claims', true)::jsonb ->> 'role', '') = 'service_role'
+      or auth.uid() = p_user_id;
+$$;
+
 -- Generic owner-policy generator
 create or replace function public.apply_owner_policies(p_table text)
 returns void language plpgsql security definer as $$
@@ -550,6 +562,7 @@ as $$
   select c.id, c.document_id, c.content, 1 - (c.embedding <=> p_embedding) as similarity
   from public.knowledge_chunks c
   where c.user_id = p_user_id
+    and public.caller_may_act_for(p_user_id)
     and c.embedding is not null
     and 1 - (c.embedding <=> p_embedding) > p_match_threshold
   order by c.embedding <=> p_embedding
@@ -603,7 +616,9 @@ $$;
 create or replace function public.get_account_strategy(p_user_id uuid)
 returns public.account_strategy
 language sql security definer stable as $$
-  select * from public.account_strategy where user_id = p_user_id limit 1;
+  select * from public.account_strategy
+  where user_id = p_user_id and public.caller_may_act_for(p_user_id)
+  limit 1;
 $$;
 
 -- ============================================================================
@@ -680,6 +695,7 @@ as $$
     1 - (m.embedding <=> p_embedding) as similarity
   from public.manager_memory m
   where m.user_id = p_user_id
+    and public.caller_may_act_for(p_user_id)
     and m.embedding is not null
     and 1 - (m.embedding <=> p_embedding) > p_match_threshold
   order by m.embedding <=> p_embedding
@@ -696,7 +712,7 @@ language sql security definer stable
 as $$
   select id, tool_name, arguments, result, status, actor, created_at
   from public.ai_actions
-  where user_id = p_user_id
+  where user_id = p_user_id and public.caller_may_act_for(p_user_id)
   order by created_at desc
   limit p_limit;
 $$;
@@ -766,8 +782,10 @@ $$;
 -- incremental changes now live in supabase/migrations/ so an existing
 -- deployment can be upgraded without a reset. Apply them in order:
 --
---   supabase/migrations/0001_ads_delivery_layer.sql
---   supabase/migrations/0002_private_storage.sql
+--   supabase/migrations/0001_ads_delivery_layer.sql … 0006_lock_definer_functions.sql
+--
+-- 0006 revokes `anon` from every SECURITY DEFINER function that takes a user
+--      id and guards each with caller_may_act_for(); see that file.
 --
 -- 0001 adds the ad set / ad delivery columns, ad-level metric granularity,
 --      a unique index that makes double-counted metrics impossible,
