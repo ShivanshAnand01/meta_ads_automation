@@ -1,6 +1,8 @@
 # Handoff prompt — paste this into a new chat
 
-> You are picking up an in-progress project. Read all of this before touching anything. It is accurate as of 2026-09-22.
+> You are picking up an in-progress project. Read all of this before touching anything. It is accurate as of 2026-09-27, commit `4cf2f45`.
+>
+> **Building the multi-agent system?** Paste [MULTI-AGENT-PROMPT.md](MULTI-AGENT-PROMPT.md) instead; it points back here for details.
 
 ## What this is
 
@@ -16,9 +18,9 @@ Owner: Shivansh (ceo.realtooth@gmail.com). He judges the tool by whether a non-t
 | Repo (local) | `C:\Users\SHIVANSH\meta-ads-platform` — GitHub `ShivanshAnand01/meta_ads_automation`, branch `master`, **public** |
 | Vercel | project `meta-ads-platform`, team `shivansh-s-projects14`, **Hobby plan**, region `bom1`. Push to `master` auto-deploys (git webhook works). Token for CLI in `~/command-center-brain/.env` as `VERCEL_TOKEN` (same account; use `npx vercel@latest … --token=$VERCEL_TOKEN --scope=shivansh-s-projects14`). |
 | Supabase | project `mnepghtodhjdxtmcihls` ("Meta Ads Automation", ap-southeast-1). Migrations `0001`–`0005` applied (see DEPLOYMENT.md for how). The Supabase MCP's direct-Postgres tools sometimes fail with `28P01 password authentication failed` — that is the MCP tool's credential, not the app; use the REST API with `SUPABASE_SERVICE_ROLE_KEY` from `.env.local`, or `pg` via `DIRECT_URL`. |
-| Docs in repo | `README.md`, `DEPLOYMENT.md`, this file |
-| Verify | `npm run typecheck && npm run lint && npm test && npm run build` — all green at commit `7ec31b2`. Tests: 39, run under tsx. |
-| Live read-only check | `npx tsx scripts/smoke-meta-readonly.ts` — 21/21 pass; exercises Graph, MCP spawn, and MCP→Graph fallback against the real account with zero spend. |
+| Docs in repo | `README.md`, `DEPLOYMENT.md`, this file, `MULTI-AGENT-PROMPT.md`, diagrams in `docs/` |
+| Verify | `npm run typecheck && npm run lint && npm test && npm run build` — all green at commit `4cf2f45`. Tests: 53, run under tsx. |
+| Live read-only check | `npx tsx --env-file=.env.local scripts/smoke-meta-readonly.ts` — 21/21 pass; exercises Graph, MCP spawn, and MCP→Graph fallback against the real account with zero spend. |
 
 ## The one account, and what it lacks
 
@@ -32,11 +34,13 @@ User `ef47db24-ea14-4d0e-b9a5-9036b052921a`, ad account **act_1316138380606285 "
 
 ## What is verified vs not
 
-**Verified live 2026-09-27:** smoke check 21/21 after the Vault fix (was 13/21: session-less runs got no token); cron endpoint answers 200 with the secret and 401 without it; Connections key checks reject bad Tavily and fal.ai keys with plain messages; the MCP client connects, lists and calls tools on a real public server.
+**Verified live 2026-09-27 (AI):** with the account's OpenAI key on gpt-5.4-mini and gpt-5.5: completion, streaming, tool calls, a two-creative Marathi batch, AI review (scores out of 100), one medium image in 16.6 s saved without a session and loaded back through its signed URL, embeddings (1536 dims).
+
+**Verified live 2026-09-27 (platform):** smoke check 21/21 after the Vault fix (was 13/21: session-less runs got no token); cron endpoint answers 200 with the secret and 401 without it; Connections key checks reject bad Tavily and fal.ai keys with plain messages; the MCP client connects, lists and calls tools on a real public server.
 
 **Verified earlier, through the app's own code:** connection + Vault, profile injection, Graph reads (campaigns, ad sets, ads, pages, pixels, insights, geo/locale search), MCP spawn per user with the user's env, MCP→Graph fallback routing (`via` field), token validation. Multi-tenant onboarding tools exist and typecheck.
 
-**Never exercised against Meta:** the **write path** — `create_campaign`, `create_ad_set`, `create_ad_creative`, `create_ad`, `publish_full_campaign`. MCP argument adaptation for these is unit-tested (`src/lib/meta/mcp-args.ts`, 14 tests: budgets major→minor units, `status`→`configured_status`, `location_types` injected, `end_time`→`stop_time`, CTA string→object) but has not hit a live account. `ingest_website` has never run. Cron is once daily (Hobby limit; `30 0 * * *` = 06:00 IST).
+**Never exercised against Meta:** the **write path** — `create_campaign`, `create_ad_set`, `create_ad_creative`, `create_ad`, `publish_full_campaign`. MCP argument adaptation for these is unit-tested (`src/lib/meta/mcp-args.ts`, 14 tests: budgets major→minor units, `status`→`configured_status`, `location_types` injected, `end_time`→`stop_time`, CTA string→object) but has not hit a live account. `ingest_website` has never run. The multi-agent system is not built. Cron is once daily (Hobby limit; `30 0 * * *` = 06:00 IST).
 
 ## Mistakes already made — do not repeat
 
@@ -49,7 +53,10 @@ User `ef47db24-ea14-4d0e-b9a5-9036b052921a`, ad account **act_1316138380606285 "
 7. The first push after changing `vercel.json` looked like it did nothing — the deploy failed at config validation before a deployment record existed.
 8. **Anything without a browser session was broken twice over**: the proxy 401'd machine callers before their route ran, and `get_user_secret` needs `auth.uid()`. Test autonomous paths with a real secret-authenticated call, not from a logged-in page.
 9. **An MCP server listing its tools does not prove the key works.** Tavily's lists tools for any key. Connections runs the provider's API key check before trusting an MCP listing.
-10. **Do not bypass auth to screenshot signed-in pages.** A dev-only impersonation patch was refused by the permission classifier and reverted. Verify signed-in UI with the owner, or with a fixture that needs no auth change.
+10. **Do not bypass auth to screenshot signed-in pages.** A dev-only impersonation patch was refused by the permission classifier and reverted. What works instead: a throwaway Next app in a git-ignored `.harness/` folder (add it to `.git/info/exclude`), with its own port, `turbopack.root` set to the repo, `tsconfig` paths `@/*` → `../src/*`, `@import` of `src/app/globals.css` plus `@source "../../src"`, and a module that replaces `window.fetch` with sample data (including a streaming SSE reply) before rendering the real page component. Delete it before committing. If the Browser pane is hidden, screenshots time out; check through `get_page_text` and same-origin iframes of a fixed width instead.
+11. **OpenAI models do not share parameters.** GPT-5+ reject `max_tokens`; GPT-5.5 and GPT-6 reject any non-default `temperature`. The provider now sends `max_completion_tokens` and drops a rejected optional parameter per model, then retries. Always call OpenAI through the provider.
+12. **One word for "approved".** The UI wrote `approved` while publishing accepted only `verified`, and an AI review silently set `verified`. Use `src/lib/ai/review-status.ts`; an AI review never approves.
+13. **Image calls take 20–60 s.** A 22 s timeout silently dropped to an unlicensed free fallback. OpenAI images now get 120 s and the fallback is opt-in only.
 
 ## Next steps, in order
 
@@ -58,16 +65,17 @@ User `ef47db24-ea14-4d0e-b9a5-9036b052921a`, ad account **act_1316138380606285 "
 3. **Leads engine:** Click-to-WhatsApp campaigns as a first-class type (`destination_type: WHATSAPP`, `WHATSAPP_MESSAGE` CTA, pre-filled opener in the profile language) and Instant Forms + leadgen webhook → `leads` table → notify owner. Zero code for either exists today.
 4. **Funnel builder:** prospecting + retargeting (pixel visitors 7/30d, engagers) + lookalike of purchasers. Zero retargeting code today. UTM builder and landing-page check (zero today).
 5. **Learning loop:** creative generation does not read memory or ad-level insights; reflection's learnings go unread. Feed winners into prompts; fatigue rule (frequency > 2.5 or CTR −30%/7d → rotate); real A/B (variants as separate ads, auto-pause losers).
-6. **Script compositing** for images (headline/price/CTA rendered in code with Noto Sans Devanagari etc.; diffusion can't render Indic scripts). Creatives page redesign (still the old table layout).
-7. Vercel Pro (hourly pacing), a staging Supabase project, make the repo private, custom domain, Sentry.
+6. **Multi-agent system:** see [MULTI-AGENT-PROMPT.md](MULTI-AGENT-PROMPT.md). It includes the learning loop in step 5.
+7. **Script compositing** for images (headline, price and CTA rendered in code with Noto Sans Devanagari; diffusion cannot render Indic scripts).
+8. Vercel Pro (hourly pacing), a staging Supabase project, make the repo private, custom domain, Sentry. The landing page is on hold by the owner's decision.
 
-**Multi-agent plan (agreed 2026-09-26, diagram in `docs/admanager-agents.html`):** one Brain (the existing AI Manager) delegating to five specialists — past-ads analyst, research agent (uses Connections), creative generator, watcher (runs on the heartbeat), editor — all reading and writing shared memory. Not built yet; Connections is the first piece.
+**Multi-agent plan (agreed 2026-09-26, diagram in `docs/admanager-agents.html`, build brief in `MULTI-AGENT-PROMPT.md`):** one Brain (the existing AI Manager) delegating to five specialists: past-ads analyst, research agent (uses Connections), creative generator, watcher (runs on the heartbeat), editor. All read and write shared memory. Not built yet; Connections is the first piece.
 
 **Open question that decides step 3 vs 4 first:** does this business (and the ones he'll onboard) close via website checkout (→ Pixel-driven Sales path) or via WhatsApp/DM conversation (→ Leads path first)? Ask him.
 
 ## Working conventions
 
-- Commit messages: imperative subject, body explains *why*; end with `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
+- Commit messages: imperative subject, body explains *why*; end with the attribution line your environment specifies.
 - Verify (typecheck, lint, test, build) before every push; `master` is production.
 - Every Meta write is created PAUSED. Never activate without an explicit yes.
 - Prefer real checks over inference. When you can't verify, say so.
