@@ -95,11 +95,14 @@ export function Delta({
   value,
   invert = false,
   suffix = '%',
+  pill = false,
   className,
 }: {
   value: number | null | undefined
   invert?: boolean
   suffix?: string
+  /** Tinted chip instead of bare text; used on stat tiles. */
+  pill?: boolean
   className?: string
 }) {
   if (value == null || !Number.isFinite(value)) {
@@ -114,11 +117,12 @@ export function Delta({
     <span
       className={cn(
         'inline-flex items-center gap-0.5 text-xs font-medium tabular',
+        pill && 'rounded-full px-1.5 py-0.5',
         flat
-          ? 'text-muted-foreground'
+          ? cn('text-muted-foreground', pill && 'bg-muted')
           : isGood
-            ? 'text-[var(--status-good-ink)]'
-            : 'text-[var(--status-critical-ink)]',
+            ? cn('text-[var(--status-good-ink)] dark:text-green-300', pill && 'bg-[var(--status-good)]/10')
+            : cn('text-[var(--status-critical-ink)] dark:text-red-300', pill && 'bg-[var(--status-critical)]/10'),
         className,
       )}
     >
@@ -149,6 +153,8 @@ export function StatTile({
   emphasis = false,
   tone,
   footnote,
+  icon: Icon,
+  spark,
   className,
 }: {
   label: string
@@ -159,35 +165,103 @@ export function StatTile({
   emphasis?: boolean
   tone?: StatusTone
   footnote?: string
+  icon?: LucideIcon
+  /** A small trend under the number (see Sparkline). Decorative: the value says it. */
+  spark?: ReactNode
   className?: string
 }) {
   return (
     <div
       className={cn(
-        'rounded-xl border border-border bg-card p-4 transition-colors',
-        emphasis && 'sm:p-5',
+        'group relative flex min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-card p-5 elev-1 transition-[box-shadow,border-color] duration-200 hover:elev-2',
+        emphasis && 'border-primary/25 bg-[radial-gradient(120%_90%_at_100%_0%,color-mix(in_oklch,var(--gradient-mid)_9%,transparent),transparent_60%)]',
         className,
       )}
     >
-      <div className="flex items-baseline justify-between gap-2">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-        {delta !== undefined && <Delta value={delta} invert={deltaInvert} />}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          {Icon && (
+            <span className={cn(
+              'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg',
+              emphasis
+                ? 'bg-[linear-gradient(145deg,var(--gradient-start),var(--gradient-mid))] text-white shadow-[0_2px_8px_-2px_oklch(0.52_0.22_264/0.5)]'
+                : 'bg-muted text-muted-foreground',
+            )}>
+              <Icon aria-hidden="true" className="h-3.5 w-3.5" strokeWidth={2} />
+            </span>
+          )}
+          <p className="truncate text-[13px] font-medium text-muted-foreground">{label}</p>
+        </div>
       </div>
 
       <p
         className={cn(
-          'mt-2 font-semibold tracking-tight tabular',
-          emphasis ? 'text-3xl sm:text-4xl' : 'text-2xl',
-          tone === 'critical' && 'text-[var(--status-critical-ink)]',
-          tone === 'good' && 'text-[var(--status-good-ink)]',
+          'mt-3 font-semibold tracking-tight tabular',
+          emphasis ? 'text-3xl sm:text-[34px] sm:leading-none' : 'text-[26px] leading-none',
+          tone === 'critical' && 'text-[var(--status-critical-ink)] dark:text-red-300',
+          tone === 'good' && 'text-[var(--status-good-ink)] dark:text-green-300',
         )}
       >
         {value}
       </p>
 
-      {sub && <div className="mt-1 text-xs text-muted-foreground">{sub}</div>}
+      {(sub || delta !== undefined) && (
+        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          {delta !== undefined && <Delta value={delta} invert={deltaInvert} pill />}
+          {sub && <div className="min-w-0">{sub}</div>}
+        </div>
+      )}
+      {spark && <div className="-mx-1 mt-auto pt-3">{spark}</div>}
       {footnote && <p className="mt-2 text-xs leading-snug text-muted-foreground">{footnote}</p>}
     </div>
+  )
+}
+
+/**
+ * A tiny trend line drawn as plain SVG. No chart library, no axes: it shows
+ * direction at a glance next to a number that already states the value.
+ */
+export function Sparkline({
+  values,
+  color = 'var(--viz-1)',
+  height = 36,
+  label,
+}: {
+  values: number[]
+  color?: string
+  height?: number
+  /** Screen-reader summary; omit to hide the sparkline from assistive tech. */
+  label?: string
+}) {
+  const pts = values.filter((v) => Number.isFinite(v))
+  if (pts.length < 2 || pts.every((v) => v === pts[0])) return <div style={{ height }} aria-hidden="true" />
+  const w = 100
+  const min = Math.min(...pts)
+  const max = Math.max(...pts)
+  const span = max - min || 1
+  const xy = pts.map((v, i) => [(i / (pts.length - 1)) * w, height - 3 - ((v - min) / span) * (height - 6)] as const)
+  const line = xy.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`).join(' ')
+  const area = `${line} L${w},${height} L0,${height} Z`
+  const id = `spark-${Math.abs(pts.reduce((a, v, i) => a + v * (i + 1), 0) | 0)}`
+  return (
+    <svg
+      viewBox={`0 0 ${w} ${height}`}
+      preserveAspectRatio="none"
+      className="block w-full"
+      style={{ height }}
+      role={label ? 'img' : undefined}
+      aria-label={label}
+      aria-hidden={label ? undefined : true}
+    >
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity={0.22} />
+          <stop offset="100%" stopColor={color} stopOpacity={0} />
+        </linearGradient>
+      </defs>
+      <path d={area} fill={`url(#${id})`} />
+      <path d={line} fill="none" stroke={color} strokeWidth={1.75} vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
   )
 }
 
@@ -220,8 +294,8 @@ export function PacingBar({
           <span className="text-xs font-medium text-muted-foreground">{label}</span>
           <span className="text-sm font-semibold tabular">{formatCurrency(spent, currency)}</span>
         </div>
-        <div className="h-2 rounded-full bg-muted" />
-        <p className="text-xs text-muted-foreground">No cap set — spending is unlimited.</p>
+        <div className="h-2.5 rounded-full bg-muted" />
+        <p className="text-xs text-muted-foreground">No cap set. Spending is unlimited.</p>
       </div>
     )
   }
@@ -242,14 +316,14 @@ export function PacingBar({
       </div>
 
       <div
-        className="h-2 overflow-hidden rounded-full bg-muted"
+        className="h-2.5 overflow-hidden rounded-full bg-muted shadow-[inset_0_1px_2px_oklch(0.2_0.02_260/0.08)]"
         role="progressbar"
         aria-valuenow={Math.round(pct)}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-label={`${label}: ${Math.round(pct)} percent of cap used`}
       >
-        <div className={cn('h-full rounded-full transition-[width] duration-500', barColor)} style={{ width: `${Math.min(100, pct)}%` }} />
+        <div className={cn('h-full rounded-full bg-[linear-gradient(90deg,transparent,oklch(1_0_0/0.25))] transition-[width] duration-700 ease-out motion-reduce:transition-none', barColor)} style={{ width: `${Math.min(100, pct)}%` }} />
       </div>
 
       {/* The percentage is stated in words as well as colour. */}
@@ -303,15 +377,15 @@ export function Section({
   className?: string
 }) {
   return (
-    <section className={cn('rounded-xl border border-border bg-card', className)}>
-      <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+    <section className={cn('rounded-2xl border border-border bg-card elev-1', className)}>
+      <div className="flex items-start justify-between gap-3 px-5 pb-1 pt-5 sm:px-6">
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold">{title}</h2>
-          {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}
+          <h2 className="text-[15px] font-semibold tracking-tight">{title}</h2>
+          {description && <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">{description}</p>}
         </div>
         {action && <div className="shrink-0">{action}</div>}
       </div>
-      <div className="p-5">{children}</div>
+      <div className="p-5 pt-4 sm:px-6 sm:pb-6">{children}</div>
     </section>
   )
 }
@@ -331,8 +405,8 @@ export function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 px-6 py-12 text-center">
-      <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-muted">
-        <Icon aria-hidden="true" className="h-5 w-5 text-muted-foreground" />
+      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[linear-gradient(145deg,color-mix(in_oklch,var(--primary)_14%,transparent),color-mix(in_oklch,var(--gradient-end)_10%,transparent))] text-primary">
+        <Icon aria-hidden="true" className="h-5 w-5" strokeWidth={1.75} />
       </div>
       <div className="space-y-1">
         <p className="text-sm font-medium">{title}</p>

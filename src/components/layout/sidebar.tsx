@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { createClient } from '@/lib/supabase/client'
+import { AiOrb } from '@/components/chat/ai-orb'
 
 /**
  * Navigation.
@@ -110,15 +111,13 @@ export function Sidebar() {
       <aside
         aria-label="Sidebar"
         className={cn(
-          'fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r border-sidebar-border bg-sidebar transition-transform duration-200',
+          'fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r border-sidebar-border bg-sidebar bg-[radial-gradient(120%_40%_at_0%_0%,color-mix(in_oklch,var(--sidebar-primary)_16%,transparent),transparent_70%)] transition-transform duration-200',
           mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
         )}
       >
         {/* Brand */}
         <div className="flex items-center gap-3 border-b border-sidebar-border px-5 py-4">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sidebar-primary">
-            <Sparkles aria-hidden="true" className="h-4 w-4 text-sidebar-primary-foreground" />
-          </div>
+          <AiOrb size={34} />
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-sidebar-foreground">AdManager</p>
             <p className="truncate text-xs text-sidebar-foreground/70">Meta Ads, run by AI</p>
@@ -142,9 +141,9 @@ export function Sidebar() {
                         onClick={() => setMobileOpen(false)}
                         aria-current={isActive ? 'page' : undefined}
                         className={cn(
-                          'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors',
+                          'group relative flex min-h-9 items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring',
                           isActive
-                            ? 'bg-sidebar-accent font-medium text-sidebar-foreground'
+                            ? 'bg-[linear-gradient(90deg,color-mix(in_oklch,var(--sidebar-primary)_24%,transparent),color-mix(in_oklch,var(--sidebar-primary)_6%,transparent))] font-medium text-sidebar-foreground shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--sidebar-primary)_25%,transparent)]'
                             : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
                         )}
                       >
@@ -155,13 +154,10 @@ export function Sidebar() {
                             className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r bg-sidebar-primary"
                           />
                         )}
-                        <Icon aria-hidden="true" className="h-4 w-4 shrink-0" />
+                        {item.href === '/ai-manager'
+                          ? <AiOrb size={16} />
+                          : <Icon aria-hidden="true" className="h-4 w-4 shrink-0" strokeWidth={1.75} />}
                         <span className="flex-1 truncate">{item.label}</span>
-                        {item.badge && (
-                          <span className="rounded bg-sidebar-primary/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-sidebar-primary">
-                            {item.badge}
-                          </span>
-                        )}
                       </Link>
                     </li>
                   )
