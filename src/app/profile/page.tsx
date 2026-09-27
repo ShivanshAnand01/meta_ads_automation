@@ -8,7 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { PageHeader, Section, StatusPill } from '@/components/ui/metric'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
-import { LogOut, ArrowRight } from 'lucide-react'
+import { LogOut, ArrowRight, User } from 'lucide-react'
 
 /**
  * Account. The sign-in identity and a one-glance summary of what is set up,
@@ -61,7 +61,8 @@ export default function ProfilePage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Account" description="Who is signed in, and what is set up." actions={<Button variant="outline" onClick={signOut} disabled={signingOut}><LogOut aria-hidden="true" className="mr-1.5 h-4 w-4" /> Sign out</Button>} />
+      <PageHeader
+        icon={User} title="Account" description="Who is signed in, and what is set up." actions={<Button variant="outline" onClick={signOut} disabled={signingOut}><LogOut aria-hidden="true" className="mr-1.5 h-4 w-4" /> Sign out</Button>} />
 
       <Section title="Signed in as">
         <div className="flex items-center gap-4">

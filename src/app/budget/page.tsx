@@ -23,7 +23,7 @@ interface Billing {
   spendCap?: number
   amountSpent?: number
   billingHistory?: Array<{ amount: string; currency: string; billing_date: string; status: string; invoice_url?: string }>
-  campaignSpend?: Array<{ id: string; name: string; budget: number; totalSpend: number; budgetType: string }>
+  campaignSpend?: Array<{ id: string; name: string; budget: number; totalSpend: number; budgetType: string; status?: string; metaCampaignId?: string | null }>
 }
 interface Strategy { dailyBudgetCap: number | null; monthlyBudget: number | null }
 
@@ -46,7 +46,8 @@ export default function BudgetPage() {
   if (!data.connected) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Budget & Bills" description="Balance, spend and invoices from your Meta ad account." />
+        <PageHeader
+        icon={Wallet} title="Budget & Bills" description="Balance, spend and invoices from your Meta ad account." />
         <div className="rounded-xl border border-border bg-card">
           <EmptyState icon={Link2} title="Meta is not connected" description="Connect your Meta app to see the ad account balance and billing history here." action={<Button render={<Link href="/connect" />} nativeButton={false}>Connect Meta</Button>} />
         </div>
@@ -61,11 +62,16 @@ export default function BudgetPage() {
   const history = data.billingHistory ?? []
   const campaigns = data.campaignSpend ?? []
   const dailyCap = strategy?.dailyBudgetCap ?? null
-  const liveDaily = campaigns.filter((c) => c.budgetType === 'daily').reduce((s, c) => s + c.budget, 0)
+  // Only campaigns actually running on Meta count against the daily cap;
+  // drafts and paused campaigns were being added in and showed "over cap".
+  const liveDaily = campaigns
+    .filter((c) => c.budgetType === 'daily' && c.metaCampaignId && (c.status || '').toUpperCase() === 'ACTIVE')
+    .reduce((s, c) => s + c.budget, 0)
 
   return (
     <div className="space-y-6">
       <PageHeader
+        icon={Wallet}
         title="Budget & Bills"
         description={`${data.adAccount?.name || 'Ad account'} · ${currency}`}
         meta={balance < 0 ? <StatusPill tone="good">Prepaid balance available</StatusPill> : balance > 0 ? <StatusPill tone="warning">Outstanding: {formatCurrency(balance, currency)}</StatusPill> : null}
@@ -85,20 +91,33 @@ export default function BudgetPage() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Section title="Platform guardrails" description="Caps enforced by this platform, in code, before any budget is sent." action={<Button size="sm" variant="ghost" render={<Link href="/settings" />} nativeButton={false}>Change</Button>}>
           <div className="space-y-5">
-            <PacingBar label="Planned daily spend vs daily cap" spent={liveDaily} cap={dailyCap} currency={currency} />
+            <PacingBar label="Live daily budgets vs daily cap" spent={liveDaily} cap={dailyCap} currency={currency} />
             <PacingBar label="Spent vs Meta spend cap" spent={spent} cap={cap > 0 ? cap : null} currency={currency} />
             {!dailyCap && <p className="text-xs text-[var(--status-critical-ink)]">Set a daily cap in Settings. Without one the platform has no ceiling of its own.</p>}
           </div>
         </Section>
 
-        <Section title="Campaign budgets" description="What each campaign is set to, against what it has actually spent.">
+        <Section title="Campaign budgets" description="What each campaign is set to, and what it has spent so far.">
           {campaigns.length === 0 ? (
             <p className="text-sm text-muted-foreground">No campaigns yet.</p>
           ) : (
             <ul className="space-y-4">
               {campaigns.map((c) => (
                 <li key={c.id} className="min-w-0">
-                  <PacingBar label={`${c.name} · ${c.budgetType === 'daily' ? 'daily' : 'lifetime'} budget`} spent={c.totalSpend || 0} cap={c.budget} currency={currency} />
+                  {/* A lifetime budget is a cap on total spend, so a bar fits. A
+                      daily budget is a rate: comparing all-time spend to one
+                      day's budget showed every running campaign "over cap". */}
+                  {c.budgetType === 'daily' ? (
+                    <div className="flex items-baseline justify-between gap-3 rounded-xl border border-border px-3.5 py-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{c.name}</p>
+                        <p className="text-xs text-muted-foreground">Daily budget · spend to date {formatCurrency(c.totalSpend || 0, currency)}</p>
+                      </div>
+                      <p className="shrink-0 text-sm font-semibold tabular">{formatCurrency(c.budget, currency)}<span className="font-normal text-muted-foreground">/day</span></p>
+                    </div>
+                  ) : (
+                    <PacingBar label={`${c.name} · lifetime budget`} spent={c.totalSpend || 0} cap={c.budget} currency={currency} />
+                  )}
                 </li>
               ))}
             </ul>

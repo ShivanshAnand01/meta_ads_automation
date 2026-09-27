@@ -97,6 +97,7 @@ export default function SchedulePage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        icon={CalendarClock}
         title="Automations"
         description="Routines the agent runs on its own. Anything that moves money still goes through approval."
         meta={active > 0 ? <StatusPill tone="good">{active} running</StatusPill> : <StatusPill tone="neutral">Nothing scheduled</StatusPill>}

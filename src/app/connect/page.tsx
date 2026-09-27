@@ -85,6 +85,7 @@ export default function ConnectPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        icon={Link2}
         title="Meta Connection"
         description="Your own Meta app and token. The platform only ever acts inside this account."
         meta={connected ? <StatusPill tone={status?.tokenTest?.valid === false ? 'critical' : 'good'}>{status?.tokenTest?.valid === false ? 'Token invalid' : 'Connected'}</StatusPill> : <StatusPill tone="neutral">Not connected</StatusPill>}

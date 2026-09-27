@@ -170,10 +170,10 @@ export function ChipGroup<T extends string>({
             title={opt.hint}
             onClick={() => toggle(opt.value)}
             className={cn(
-              'inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 text-sm transition-colors',
+              'inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-full border px-3 text-sm transition-[color,background-color,border-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               size === 'sm' && 'min-h-8 px-2.5 text-xs',
               on
-                ? 'border-primary bg-primary/10 font-medium text-foreground'
+                ? 'border-primary/60 bg-primary/10 font-medium text-foreground shadow-[0_0_0_3px_color-mix(in_oklch,var(--primary)_12%,transparent)]'
                 : 'border-border bg-card text-muted-foreground hover:border-foreground/30 hover:text-foreground',
             )}
           >

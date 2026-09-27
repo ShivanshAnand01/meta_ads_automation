@@ -11,11 +11,12 @@ import { TextField, TextAreaField, ChipGroup, Field } from '@/components/ui/fiel
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
 import { AdPreview, copyLimitNotes } from '@/components/ads/ad-preview'
+import { AiOrb } from '@/components/chat/ai-orb'
+import { normalizeReview } from '@/lib/ai/review-status'
 import { ASPECT_RATIOS, CTAS, languageLabel } from '@/lib/ai/profile-constants'
 import type { CreativeReview, CreativeSuggestion } from '@/lib/ai/types'
 import {
-  Sparkles, Plus, Check, X, Wand2, Loader2, Trash2, Search, ImageIcon, TriangleAlert, ExternalLink,
-} from 'lucide-react'
+  Sparkles, Plus, Check, X, Wand2, Loader2, Trash2, Search, ImageIcon, TriangleAlert, ExternalLink, ImagePlus } from 'lucide-react'
 
 /**
  * Ad Creatives.
@@ -112,15 +113,15 @@ export default function CreativesPage() {
 
   const counts = useMemo(() => ({
     all: creatives.length,
-    pending: creatives.filter((c) => c.reviewStatus === 'pending').length,
-    approved: creatives.filter((c) => c.reviewStatus === 'approved').length,
-    rejected: creatives.filter((c) => c.reviewStatus === 'rejected').length,
+    pending: creatives.filter((c) => normalizeReview(c.reviewStatus) === 'pending').length,
+    approved: creatives.filter((c) => normalizeReview(c.reviewStatus) === 'approved').length,
+    rejected: creatives.filter((c) => normalizeReview(c.reviewStatus) === 'rejected').length,
   }), [creatives])
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase()
     return creatives.filter((c) => {
-      if (filter !== 'all' && c.reviewStatus !== filter) return false
+      if (filter !== 'all' && normalizeReview(c.reviewStatus) !== filter) return false
       if (!q) return true
       return [c.title, c.headline, c.primaryText, c.campaign?.name].some((s) => s?.toLowerCase().includes(q))
     })
@@ -186,6 +187,7 @@ export default function CreativesPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        icon={ImagePlus}
         title="Ad Creatives"
         description={langLabel ? `Written in ${langLabel} for ${profile?.businessName || 'your business'}.` : 'Every ad, shown the way your customers will see it.'}
         meta={
@@ -208,33 +210,51 @@ export default function CreativesPage() {
       />
 
       {creatives.length > 0 && (
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <ChipGroup<Filter>
-            size="sm"
-            value={filter}
-            onChange={(v) => setFilter((v as Filter) || 'all')}
-            options={[
-              { value: 'all', label: `All · ${counts.all}` },
-              { value: 'pending', label: `Needs review · ${counts.pending}` },
-              { value: 'approved', label: `Approved · ${counts.approved}` },
-              { value: 'rejected', label: `Rejected · ${counts.rejected}` },
-            ]}
-          />
-          <label className="relative block sm:w-64">
+        <div className="space-y-3">
+          <div role="group" aria-label="Filter by review status" className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            {([
+              { key: 'all', label: 'All creatives', n: counts.all, dot: 'bg-primary' },
+              { key: 'pending', label: 'Needs review', n: counts.pending, dot: 'bg-[var(--status-warning)]' },
+              { key: 'approved', label: 'Approved', n: counts.approved, dot: 'bg-[var(--status-good)]' },
+              { key: 'rejected', label: 'Rejected', n: counts.rejected, dot: 'bg-[var(--status-critical)]' },
+            ] as Array<{ key: Filter; label: string; n: number; dot: string }>).map((f) => {
+              const on = filter === f.key
+              return (
+                <button
+                  key={f.key}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => setFilter(f.key)}
+                  className={`group flex min-w-0 flex-col items-start gap-1 rounded-2xl border p-4 text-left transition-[border-color,box-shadow,background-color] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                    on
+                      ? 'border-primary/50 bg-[radial-gradient(120%_120%_at_100%_0%,color-mix(in_oklch,var(--gradient-mid)_10%,transparent),transparent_65%)] bg-card shadow-[0_0_0_3px_color-mix(in_oklch,var(--primary)_12%,transparent),var(--elev-2)]'
+                      : 'border-border bg-card elev-1 hover:border-primary/30'
+                  }`}
+                >
+                  <span className="flex items-center gap-2 text-[13px] font-medium text-muted-foreground">
+                    <span aria-hidden="true" className={`h-2 w-2 rounded-full ${f.dot}`} />{f.label}
+                  </span>
+                  <span className="text-2xl font-semibold tracking-tight tabular">{f.n}</span>
+                </button>
+              )
+            })}
+          </div>
+          <label className="relative block md:max-w-sm">
             <span className="sr-only">Search creatives</span>
-            <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search headline or text"
-              className="h-9 w-full rounded-lg border border-input bg-transparent pl-9 pr-3 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-3 focus:ring-ring/50 dark:bg-input/30"
+              placeholder="Search headline, text or campaign"
+              className="h-10 w-full rounded-full border border-input bg-card pl-10 pr-4 text-sm outline-none transition-[border-color,box-shadow] placeholder:text-muted-foreground focus:border-primary/60 focus:ring-4 focus:ring-primary/15 dark:bg-input/30"
             />
           </label>
         </div>
       )}
 
       {creatives.length === 0 ? (
-        <div className="rounded-xl border border-border bg-card">
+        <div className="rounded-2xl border border-border bg-card elev-1">
+          <div className="flex justify-center pt-10"><AiOrb size={56} /></div>
           <EmptyState
             icon={ImageIcon}
             title="No creatives yet"
@@ -251,18 +271,18 @@ export default function CreativesPage() {
           />
         </div>
       ) : visible.length === 0 ? (
-        <div className="rounded-xl border border-border bg-card">
+        <div className="rounded-2xl border border-border bg-card elev-1">
           <EmptyState icon={Search} title="Nothing matches" description="Try another filter or clear the search." />
         </div>
       ) : (
         <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-label="Creatives">
-          {visible.map((c) => (
-            <li key={c.id} className="min-w-0">
+          {visible.map((c, i) => (
+            <li key={c.id} className="min-w-0 animate-in fade-in slide-in-from-bottom-2 fill-mode-both duration-300 motion-reduce:animate-none" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
               <CreativeCard
                 creative={c}
                 profile={profile}
                 busy={busyId === c.id}
-                onApprove={() => patch(c.id, { reviewStatus: 'approved' }, 'Approved')}
+                onApprove={() => patch(c.id, { reviewStatus: 'approved' }, 'Approved. It can now be published.')}
                 onReject={() => patch(c.id, { reviewStatus: 'rejected' }, 'Rejected')}
                 onReset={() => patch(c.id, { reviewStatus: 'pending' })}
                 onReview={() => aiReview(c)}
@@ -374,12 +394,17 @@ function CreativeCard({
   onImprove: () => void
   onDelete: () => void
 }) {
-  const review = REVIEW_TONE[c.reviewStatus] ?? { tone: 'neutral' as StatusTone, label: c.reviewStatus }
+  const state = normalizeReview(c.reviewStatus)
+  const review = REVIEW_TONE[state] ?? { tone: 'neutral' as StatusTone, label: c.reviewStatus }
   const notes = copyLimitNotes(toPreview(c, profile))
   const hasResults = (c.impressions ?? 0) > 0
 
   return (
-    <div className="flex h-full flex-col gap-3 rounded-xl border border-border bg-card p-3">
+    <div className={`group/card flex h-full flex-col gap-3 rounded-2xl border bg-card p-3.5 transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-0.5 motion-reduce:hover:translate-y-0 ${
+      state === 'pending'
+        ? 'border-[var(--status-warning)]/50 shadow-[0_0_0_3px_color-mix(in_oklch,var(--status-warning)_14%,transparent),var(--elev-1)] hover:shadow-[0_0_0_3px_color-mix(in_oklch,var(--status-warning)_18%,transparent),var(--elev-3)]'
+        : 'border-border elev-1 hover:elev-3'
+    }`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold" title={c.title}>{c.title}</p>
@@ -401,42 +426,44 @@ function CreativeCard({
       )}
 
       <dl className="grid grid-cols-3 gap-2 text-center">
-        <div className="rounded-lg bg-muted/60 px-2 py-1.5">
+        <div className="rounded-xl border border-border/70 bg-muted/40 px-2 py-2">
           <dt className="text-xs uppercase tracking-wide text-muted-foreground">{hasResults ? 'Real ROAS' : 'Est. ROAS'}</dt>
           <dd className="text-sm font-semibold tabular">{hasResults ? `${(c.actualRoas ?? 0).toFixed(1)}×` : c.expectedRoas != null ? `~${c.expectedRoas.toFixed(1)}×` : '—'}</dd>
         </div>
-        <div className="rounded-lg bg-muted/60 px-2 py-1.5">
+        <div className="rounded-xl border border-border/70 bg-muted/40 px-2 py-2">
           <dt className="text-xs uppercase tracking-wide text-muted-foreground">Clicks</dt>
           <dd className="text-sm font-semibold tabular">{c.clicks ?? '—'}</dd>
         </div>
-        <div className="rounded-lg bg-muted/60 px-2 py-1.5">
+        <div className="rounded-xl border border-border/70 bg-muted/40 px-2 py-2">
           <dt className="text-xs uppercase tracking-wide text-muted-foreground">Sales</dt>
           <dd className="text-sm font-semibold tabular">{c.conversions ?? '—'}</dd>
         </div>
       </dl>
 
       <div className="mt-auto flex items-center gap-2 pt-1">
-        {c.reviewStatus === 'pending' ? (
+        {state === 'pending' ? (
           <>
-            <Button size="sm" className="flex-1" onClick={onApprove} disabled={busy}>
+            <Button className="flex-1" onClick={onApprove} disabled={busy}>
               <Check aria-hidden="true" className="mr-1 h-4 w-4" /> Approve
             </Button>
-            <Button size="sm" variant="outline" className="flex-1" onClick={onReject} disabled={busy}>
+            <Button variant="outline" className="flex-1" onClick={onReject} disabled={busy}>
               <X aria-hidden="true" className="mr-1 h-4 w-4" /> Reject
             </Button>
           </>
         ) : (
-          <Button size="sm" variant="outline" className="flex-1" onClick={onReset} disabled={busy}>Send back to review</Button>
+          <Button variant="outline" className="flex-1" onClick={onReset} disabled={busy}>Send back to review</Button>
         )}
-        <Button size="sm" variant="ghost" onClick={onReview} disabled={busy} aria-label="AI review" title="AI review">
-          {busy ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <Sparkles aria-hidden="true" className="h-4 w-4" />}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={onImprove} disabled={busy} aria-label="Improve with AI" title="Improve with AI">
-          <Wand2 aria-hidden="true" className="h-4 w-4" />
-        </Button>
-        <Button size="sm" variant="ghost" onClick={onDelete} disabled={busy} aria-label="Delete" title="Delete" className="text-muted-foreground hover:text-[var(--status-critical-ink)]">
-          <Trash2 aria-hidden="true" className="h-4 w-4" />
-        </Button>
+        <div className="flex shrink-0 items-center rounded-xl border border-border bg-muted/40 p-0.5">
+          <Button size="icon-sm" variant="ghost" onClick={onReview} disabled={busy} aria-label="AI review" title="AI review">
+            {busy ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <Sparkles aria-hidden="true" className="h-4 w-4" />}
+          </Button>
+          <Button size="icon-sm" variant="ghost" onClick={onImprove} disabled={busy} aria-label="Improve with AI" title="Improve with AI">
+            <Wand2 aria-hidden="true" className="h-4 w-4" />
+          </Button>
+          <Button size="icon-sm" variant="ghost" onClick={onDelete} disabled={busy} aria-label="Delete creative" title="Delete" className="text-muted-foreground hover:text-[var(--status-critical-ink)]">
+            <Trash2 aria-hidden="true" className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </div>
   )
@@ -530,7 +557,10 @@ function GenerateDialog({ open, onOpenChange, profile, onDone }: { open: boolean
     <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Generate creatives</DialogTitle>
+          <div className="flex items-center gap-3">
+            <AiOrb size={36} working={busy} />
+            <DialogTitle className="text-lg">Generate creatives</DialogTitle>
+          </div>
           <DialogDescription>
             Copy is written in <strong className="text-foreground">{langLabel}</strong> for {profile?.businessName || 'your business'}.{' '}
             <Link href="/business" className="underline underline-offset-2">Change in Business Profile</Link>.

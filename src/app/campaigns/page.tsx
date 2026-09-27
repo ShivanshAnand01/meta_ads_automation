@@ -117,6 +117,7 @@ export default function CampaignsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        icon={Megaphone}
         title="Campaigns"
         description="Plans, and what is live. Everything publishes paused; going live is a separate click."
         actions={<Button onClick={() => setShowCreate(true)}><Plus aria-hidden="true" className="mr-1.5 h-4 w-4" /> New campaign</Button>}
@@ -132,7 +133,7 @@ export default function CampaignsPage() {
       )}
 
       {campaigns.length === 0 ? (
-        <div className="rounded-xl border border-border bg-card">
+        <div className="rounded-2xl border border-border bg-card elev-1">
           <EmptyState icon={Megaphone} title="No campaigns yet" description="Create one here, or ask the AI Manager to plan one from your Business Profile." action={<Button onClick={() => setShowCreate(true)}><Plus aria-hidden="true" className="mr-1.5 h-4 w-4" /> New campaign</Button>} />
         </div>
       ) : (
@@ -142,10 +143,18 @@ export default function CampaignsPage() {
             const busy = busyId === c.id
             const live = c.metaCampaignId && c.status.toUpperCase() === 'ACTIVE'
             return (
-              <li key={c.id} className="rounded-xl border border-border bg-card p-4 sm:p-5">
+              <li key={c.id} className="relative overflow-hidden rounded-2xl border border-border bg-card p-4 pl-5 elev-1 transition-[box-shadow,border-color] duration-200 hover:elev-2 sm:p-5 sm:pl-6">
+                {/* State at a glance: green live, amber paused, neutral draft. */}
+                <span aria-hidden="true" className={`absolute inset-y-0 left-0 w-1 ${st.tone === 'good' ? 'bg-[var(--status-good)]' : st.tone === 'warning' ? 'bg-[var(--status-warning)]' : 'bg-border'}`} />
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0 flex-1 space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
+                      {live && (
+                        <span aria-hidden="true" className="relative flex h-2.5 w-2.5">
+                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--status-good)] opacity-60 motion-reduce:animate-none" />
+                          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[var(--status-good)]" />
+                        </span>
+                      )}
                       <h2 className="truncate text-base font-semibold">{c.name}</h2>
                       <StatusPill tone={st.tone}>{st.label}</StatusPill>
                       <span className="rounded-full bg-muted px-2.5 py-1 text-xs">{objectiveLabel(c.objective)}</span>

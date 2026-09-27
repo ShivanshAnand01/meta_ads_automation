@@ -7,7 +7,7 @@ import { PageHeader, Section, StatusPill } from '@/components/ui/metric'
 import { TextField, TextAreaField, ChipGroup, TagInput, Field } from '@/components/ui/field'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
 import { LANGUAGES, OBJECTIVES, CTAS, type LanguageMode } from '@/lib/ai/profile-constants'
-import { Globe, Loader2, Save, Sparkles, Check } from 'lucide-react'
+import { Globe, Loader2, Save, Sparkles, Check, Building2 } from 'lucide-react'
 
 /**
  * Business Profile.
@@ -132,6 +132,7 @@ export default function BusinessPage() {
   return (
     <div className="space-y-6 pb-24">
       <PageHeader
+        icon={Building2}
         title="Business Profile"
         description="What the AI knows about you. Every ad is written from this page."
         meta={

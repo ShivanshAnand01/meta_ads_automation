@@ -343,20 +343,33 @@ export function PageHeader({
   description,
   actions,
   meta,
+  icon: Icon,
 }: {
   title: string
   description?: string
   actions?: ReactNode
   meta?: ReactNode
+  /** The page's icon, shown as a glossy tile. Same icon as the sidebar. */
+  icon?: LucideIcon
 }) {
   return (
-    <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-      <div className="min-w-0 space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{title}</h1>
-        {description && <p className="text-sm text-muted-foreground">{description}</p>}
-        {meta && <div className="flex flex-wrap items-center gap-2 pt-1">{meta}</div>}
+    <header className="relative isolate overflow-hidden rounded-2xl border border-border bg-card px-5 py-5 elev-1 sm:px-6 sm:py-6">
+      <div aria-hidden="true" className="page-hero-field" />
+      <div className="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex min-w-0 items-start gap-4">
+          {Icon && (
+            <span className="hero-icon hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-white sm:flex">
+              <Icon aria-hidden="true" className="h-[22px] w-[22px]" strokeWidth={1.9} />
+            </span>
+          )}
+          <div className="min-w-0 space-y-1">
+            <h1 className="text-balance text-2xl font-semibold tracking-tight sm:text-[28px] sm:leading-tight">{title}</h1>
+            {description && <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">{description}</p>}
+            {meta && <div className="flex flex-wrap items-center gap-2 pt-1.5">{meta}</div>}
+          </div>
+        </div>
+        {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
       </div>
-      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
     </header>
   )
 }

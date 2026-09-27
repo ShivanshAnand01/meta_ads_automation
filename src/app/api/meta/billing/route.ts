@@ -66,6 +66,8 @@ export async function GET() {
         budget: true,
         totalSpend: true,
         budgetType: true,
+        status: true,
+        metaCampaignId: true,
       },
     })
 

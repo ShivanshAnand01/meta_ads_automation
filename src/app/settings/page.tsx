@@ -10,7 +10,7 @@ import { PageHeader, Section, StatusPill, formatCurrency } from '@/components/ui
 import { TextField, TextAreaField, ChipGroup, Field, SwitchRow } from '@/components/ui/field'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
 import { MODEL_PRESETS } from '@/lib/ai/model-catalog'
-import { Loader2, Save, Eye, EyeOff, Sparkles, Cpu, Key, Server, ShieldCheck } from 'lucide-react'
+import { Loader2, Save, Eye, EyeOff, Sparkles, Cpu, Key, Server, ShieldCheck, Settings } from 'lucide-react'
 
 /**
  * Settings: the AI brain and the money guardrails.
@@ -52,6 +52,7 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        icon={Settings}
         title="Settings"
         description="The AI that writes and the limits it cannot cross."
         meta={

@@ -335,6 +335,7 @@ export default function ConnectionsPage() {
   return (
     <div className="space-y-8">
       <PageHeader
+        icon={Plug}
         title="Connections"
         description="Optional tools that make your agents stronger. OpenAI in Settings already covers copy and images; add these for web research, more image and video models, and voice."
         meta={

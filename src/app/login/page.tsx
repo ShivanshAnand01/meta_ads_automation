@@ -3,12 +3,13 @@
 export const dynamic = 'force-dynamic'
 
 import { useState, useEffect } from 'react'
+import { AiOrb } from '@/components/chat/ai-orb'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/field'
 import { toast } from 'sonner'
-import { Loader2, ArrowLeft, Eye, EyeOff, Sparkles } from 'lucide-react'
+import { Loader2, ArrowLeft, Eye, EyeOff } from 'lucide-react'
 
 type AuthMode = 'signin' | 'signup' | 'reset'
 
@@ -151,27 +152,49 @@ export default function LoginPage() {
   const subtitle = mode === 'signin' ? 'Your ads, your language, your caps.' : mode === 'signup' ? 'Connect your own Meta app. Nothing is shared between businesses.' : 'We will email you a link to set a new one.'
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-background p-4">
-      <div className="w-full max-w-sm">
-        <div className="mb-6 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <Sparkles aria-hidden="true" className="h-5 w-5" />
+    <div className="grid min-h-dvh grid-cols-1 bg-background lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
+      {/* Brand panel: the agent, and three promises in plain words. */}
+      <aside aria-hidden="true" className="relative hidden overflow-hidden bg-sidebar text-sidebar-foreground lg:flex lg:flex-col lg:justify-between lg:p-12">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_50%_at_20%_10%,color-mix(in_oklch,var(--gradient-start)_35%,transparent),transparent_70%),radial-gradient(50%_45%_at_90%_90%,color-mix(in_oklch,var(--gradient-end)_28%,transparent),transparent_70%)]" />
+        <div className="pointer-events-none absolute inset-0 opacity-[0.12] [background-image:radial-gradient(circle_at_1px_1px,white_1px,transparent_0)] [background-size:22px_22px] [mask-image:radial-gradient(70%_60%_at_50%_45%,#000,transparent)]" />
+        <div className="relative flex items-center gap-3">
+          <AiOrb size={36} />
+          <p className="text-lg font-semibold">AdManager</p>
+        </div>
+        <div className="relative">
+          <div className="mb-10 flex flex-col items-start">
+            <AiOrb size={120} />
+            <div className="ai-orb-shadow mt-3 w-24 opacity-60" />
           </div>
+          <p className="max-w-md text-balance text-4xl font-semibold leading-[1.1] tracking-tight">Your Meta ads, run by an agent that knows your business.</p>
+          <ul className="mt-8 space-y-3 text-[15px] text-sidebar-foreground/80">
+            <li className="flex items-center gap-3"><span className="h-1.5 w-1.5 rounded-full bg-[var(--gradient-end)]" />Writes ads in your customers&apos; language</li>
+            <li className="flex items-center gap-3"><span className="h-1.5 w-1.5 rounded-full bg-[var(--gradient-mid)]" />Never spends past the caps you set</li>
+            <li className="flex items-center gap-3"><span className="h-1.5 w-1.5 rounded-full bg-[var(--gradient-start)]" />Asks before anything goes live</li>
+          </ul>
+        </div>
+        <p className="relative text-xs text-sidebar-foreground/55">Your own Meta app. Nothing is shared between businesses.</p>
+      </aside>
+
+      <div className="flex items-center justify-center p-4 sm:p-8">
+      <div className="w-full max-w-sm">
+        <div className="mb-8 flex items-center gap-3 lg:hidden">
+          <AiOrb size={40} />
           <div>
-            <p className="font-heading text-lg font-semibold leading-tight">AdManager</p>
+            <p className="text-lg font-semibold leading-tight">AdManager</p>
             <p className="text-xs text-muted-foreground">Meta ads, run by an agent that knows your business</p>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-          <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+        <div className="rounded-2xl border border-border bg-card p-6 elev-2 sm:p-7">
+          <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-4" noValidate>
             <Field label="Email" required error={errors.email}>
               {({ id, describedBy, invalid }) => (
                 <input id={id} type="email" autoComplete="email" inputMode="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@business.in" aria-describedby={describedBy} aria-invalid={invalid || undefined} disabled={loading}
-                  className="h-11 w-full rounded-lg border border-input bg-transparent px-3 text-base outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-3 focus:ring-ring/50 md:text-sm dark:bg-input/30" />
+                  className="h-11 w-full rounded-xl border border-input bg-card px-3 text-base outline-none transition-[border-color,box-shadow] placeholder:text-muted-foreground focus:border-primary/60 focus:ring-4 focus:ring-primary/15 md:text-sm dark:bg-input/30" />
               )}
             </Field>
 
@@ -181,7 +204,7 @@ export default function LoginPage() {
                 {({ id, describedBy, invalid }) => (
                   <div className="relative">
                     <input id={id} type={showPassword ? 'text' : 'password'} autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={mode === 'signup' ? 'At least 8 characters' : '••••••••'} aria-describedby={describedBy} aria-invalid={invalid || undefined} disabled={loading}
-                      className="h-11 w-full rounded-lg border border-input bg-transparent pl-3 pr-11 text-base outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-3 focus:ring-ring/50 md:text-sm dark:bg-input/30" />
+                      className="h-11 w-full rounded-xl border border-input bg-card pl-3 pr-11 text-base outline-none transition-[border-color,box-shadow] placeholder:text-muted-foreground focus:border-primary/60 focus:ring-4 focus:ring-primary/15 md:text-sm dark:bg-input/30" />
                     <button type="button" onClick={() => setShowPassword((s) => !s)} aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword}
                       className="absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground">
                       {showPassword ? <EyeOff aria-hidden="true" className="h-4 w-4" /> : <Eye aria-hidden="true" className="h-4 w-4" />}
@@ -214,6 +237,7 @@ export default function LoginPage() {
             )}
           </div>
         </div>
+      </div>
       </div>
     </div>
   )

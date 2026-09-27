@@ -3,6 +3,7 @@
 export const dynamic = 'force-dynamic'
 
 import { useState, useEffect } from 'react'
+import { AiOrb } from '@/components/chat/ai-orb'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -10,7 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import { motion } from 'framer-motion'
-import { Brain, Loader2, Lock } from 'lucide-react'
+import { Loader2, Lock } from 'lucide-react'
 
 export default function ResetPasswordPage() {
   const router = useRouter()
@@ -56,8 +57,9 @@ export default function ResetPasswordPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (password.length < 6) {
-      toast.error('Password must be at least 6 characters')
+    // Same rule as sign-up, so a reset cannot set a weaker password.
+    if (password.length < 8) {
+      toast.error('Password must be at least 8 characters')
       return
     }
     if (password !== confirm) {
@@ -89,17 +91,16 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
+    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden p-4">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(45%_40%_at_50%_20%,color-mix(in_oklch,var(--gradient-mid)_16%,transparent),transparent_70%)]" />
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-sm"
+        className="relative w-full max-w-sm"
       >
-        <div className="rounded-2xl border border-border bg-card p-6 space-y-6 shadow-sm">
+        <div className="space-y-6 rounded-2xl border border-border bg-card p-6 elev-2 sm:p-7">
           <div className="flex flex-col items-center gap-3 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-              <Brain className="h-7 w-7 text-white" />
-            </div>
+            <AiOrb size={56} />
             <div>
               <h1 className="text-xl font-semibold tracking-tight">Set new password</h1>
               <p className="text-sm text-muted-foreground mt-1">Enter your new password below</p>
@@ -110,15 +111,15 @@ export default function ResetPasswordPage() {
             <div className="space-y-2">
               <Label htmlFor="password">New password</Label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Lock aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   id="password"
                   type="password"
                   required
-                  minLength={6}
+                  minLength={8}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
+                  placeholder="At least 8 characters"
                   className="pl-9 h-11"
                   disabled={loading}
                 />
@@ -127,12 +128,12 @@ export default function ResetPasswordPage() {
             <div className="space-y-2">
               <Label htmlFor="confirm">Confirm password</Label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Lock aria-hidden="true" className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   id="confirm"
                   type="password"
                   required
-                  minLength={6}
+                  minLength={8}
                   value={confirm}
                   onChange={(e) => setConfirm(e.target.value)}
                   placeholder="••••••••"
