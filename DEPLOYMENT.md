@@ -49,7 +49,7 @@ Set in Vercel → Settings → Environment Variables (Production, Preview, Devel
 | `NEXT_PUBLIC_ALLOW_SIGNUP` | `true`. This is a multi-tenant SaaS: any business signs up and brings its own Meta app. (Baked in at build time — a change needs a redeploy.) |
 | `IMAGE_FALLBACK_ENABLED` | `true` allows the free Pollinations image provider. Set `false` for client work — it has no SLA, no moderation and no commercial licence |
 | `NEXT_TELEMETRY_DISABLED` | `1` |
-| `DEVELOPER_EMAILS` | Comma-separated emails that may open `/admin/costs` (running cost across all businesses). Unset = nobody |
+| `DEVELOPER_EMAILS` | Comma-separated developer emails (today: `shivansh.anand110@gmail.com`). They get the Developer section: `/admin` (every business, read-only, plus a test bench) and `/admin/costs`, and their own account can use every specialist before it is switched on for businesses. Unset = nobody |
 | `AGENT_RUN_COST_CAP_USD` | Optional. Hard stop for one specialist run's AI spend; default `0.5` |
 | `APP_URL` | Optional. Where the app kicks its own agent queue; defaults to Vercel's production domain |
 

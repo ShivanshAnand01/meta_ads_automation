@@ -1,10 +1,11 @@
 import { db } from '@/lib/db/supabase-db'
 import { createAIProvider } from '@/lib/ai/factory'
 import { processAgentMessage, streamAgentMessage, type AgentResult, type AgentStreamEvent } from '@/lib/ai/agent'
-import { ALL_TOOLS } from '@/lib/ai/tool-definitions'
+import { toolsForUser } from '@/lib/ai/tool-definitions'
+import { isDeveloperUserId } from '@/lib/developer'
 import { executeTool, type ToolExecutionContext } from '@/lib/ai/tools'
 import type { LocalToolContext } from '@/lib/ai/tools/local'
-import type { AIProvider, AIProviderType, ChatMessage, ToolCall, ContentPart } from '@/lib/ai/types'
+import type { AIProvider, AIProviderType, ChatMessage, ToolCall, ContentPart, ToolDefinition } from '@/lib/ai/types'
 import { getStrategy, updateStrategy, buildStrategyContext, type AccountStrategy } from '@/lib/ai/strategy'
 import { getRecentMemory, addMemory, retrieveRelevantMemory, buildMemoryContext, type EmbedConfig, type ManagerMemory } from '@/lib/ai/memory'
 import { getMetaConnection } from '@/lib/meta/user-client'
@@ -129,6 +130,7 @@ export class AIManager {
   private strategy: AccountStrategy | null = null
   private localCtx: LocalToolContext | null = null
   private toolCtx: ToolExecutionContext | null = null
+  private tools: ToolDefinition[] = []
   private _initialized = false
 
   constructor(config: ManagerConfig) {
@@ -190,6 +192,8 @@ export class AIManager {
       actor: this.actor,
       autoApproved: effectiveAutoApproved,
     }
+
+    this.tools = toolsForUser(await isDeveloperUserId(this.userId))
 
     this._initialized = true
   }
@@ -337,7 +341,7 @@ export class AIManager {
     return processAgentMessage(
       this.provider!,
       messages,
-      ALL_TOOLS,
+      this.tools,
       (tool, args) => executeTool(this.toolCtx!, tool, args),
       systemContext,
     )
@@ -352,7 +356,7 @@ export class AIManager {
     yield* streamAgentMessage(
       this.provider!,
       messages,
-      ALL_TOOLS,
+      this.tools,
       (tool, args) => executeTool(this.toolCtx!, tool, args),
       signal,
       systemContext,

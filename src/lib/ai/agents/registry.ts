@@ -126,6 +126,11 @@ export function enabledSpecialists(): SpecialistConfig[] {
   return AGENT_IDS.map((id) => SPECIALISTS[id]).filter((s) => s.enabled)
 }
 
+/** The developer's account can use every specialist, including ones not yet switched on for businesses. */
+export function specialistsFor(developer: boolean): SpecialistConfig[] {
+  return developer ? AGENT_IDS.map((id) => SPECIALISTS[id]) : enabledSpecialists()
+}
+
 /** Rules every specialist follows, whatever its job. */
 export const SPECIALIST_BASE_PROMPT = `You are a specialist on the AI Manager's team for a Meta (Facebook/Instagram) ads platform. The AI Manager gave you a brief; do that job and report back. You never talk to the business owner directly.
 

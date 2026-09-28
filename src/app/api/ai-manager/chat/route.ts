@@ -2,7 +2,8 @@ import { db } from '@/lib/db/supabase-db'
 import { requireUserId, handleError, getSupabaseServer } from '@/lib/supabase/server'
 import { createAIProvider } from '@/lib/ai/factory'
 import { streamAgentMessage } from '@/lib/ai/agent'
-import { ALL_TOOLS } from '@/lib/ai/tool-definitions'
+import { toolsForUser } from '@/lib/ai/tool-definitions'
+import { isDeveloperUserId } from '@/lib/developer'
 import { executeTool, type ToolExecutionContext } from '@/lib/ai/tools'
 import type { LocalToolContext } from '@/lib/ai/tools/local'
 import type { AIProviderType, ChatMessage, ContentPart, ToolCall } from '@/lib/ai/types'
@@ -295,7 +296,7 @@ export async function POST(request: Request) {
           for await (const ev of streamAgentMessage(
             provider,
             sanitizedMessages,
-            ALL_TOOLS,
+            toolsForUser(await isDeveloperUserId(userId)),
             (tool, args) => executeTool(toolCtx, tool, args),
             request.signal,
             contextString

@@ -1,4 +1,6 @@
 import { getSessionUser, createSupabaseServiceClient, handleError } from '@/lib/supabase/server'
+import { isDeveloperEmail } from '@/lib/developer'
+import { usdToInr } from '@/lib/fx'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -14,31 +16,6 @@ import { getSessionUser, createSupabaseServiceClient, handleError } from '@/lib/
 
 export const dynamic = 'force-dynamic'
 
-function isDeveloper(email: string | undefined | null): boolean {
-  if (!email) return false
-  const allowed = (process.env.DEVELOPER_EMAILS || '')
-    .split(',')
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean)
-  return allowed.includes(email.toLowerCase())
-}
-
-/** Today's USD→INR rate (ECB reference, via frankfurter.app), or null if unreachable. */
-async function usdToInr(): Promise<{ rate: number; date: string } | null> {
-  try {
-    const res = await fetch('https://api.frankfurter.app/latest?from=USD&to=INR', {
-      next: { revalidate: 86_400 },
-      signal: AbortSignal.timeout(4000),
-    })
-    if (!res.ok) return null
-    const j = await res.json()
-    const rate = Number(j?.rates?.INR)
-    return Number.isFinite(rate) && rate > 0 ? { rate, date: String(j.date ?? '') } : null
-  } catch {
-    return null
-  }
-}
-
 interface Bucket { costUsd: number; calls: number; inputTokens: number; outputTokens: number; unpriced: number }
 const empty = (): Bucket => ({ costUsd: 0, calls: 0, inputTokens: 0, outputTokens: 0, unpriced: 0 })
 
@@ -46,7 +23,7 @@ export async function GET(request: Request) {
   try {
     const user = await getSessionUser()
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
-    if (!isDeveloper(user.email)) return Response.json({ error: 'Not available' }, { status: 404 })
+    if (!isDeveloperEmail(user.email)) return Response.json({ error: 'Not available' }, { status: 404 })
 
     const days = Math.min(Math.max(Number(new URL(request.url).searchParams.get('days')) || 30, 1), 365)
     const since = new Date(Date.now() - days * 86_400_000).toISOString()

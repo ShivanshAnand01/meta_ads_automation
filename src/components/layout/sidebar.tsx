@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import {
   LayoutDashboard,
@@ -21,6 +21,8 @@ import {
   Sun,
   Building2,
   Plug,
+  TerminalSquare,
+  Coins,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { createClient } from '@/lib/supabase/client'
@@ -41,7 +43,7 @@ import { AiOrb } from '@/components/chat/ai-orb'
 
 const NAV_GROUPS: Array<{
   label: string
-  items: Array<{ href: string; label: string; icon: typeof LayoutDashboard; badge?: string }>
+  items: Array<{ href: string; label: string; icon: typeof LayoutDashboard; badge?: string; exact?: boolean }>
 }> = [
   {
     label: 'Run',
@@ -74,10 +76,34 @@ const NAV_GROUPS: Array<{
   },
 ]
 
+/** Shown only to the developer account (DEVELOPER_EMAILS), never to businesses. */
+const DEVELOPER_GROUP: (typeof NAV_GROUPS)[number] = {
+  label: 'Developer',
+  items: [
+    { href: '/admin', label: 'Console', icon: TerminalSquare, exact: true },
+    { href: '/admin/costs', label: 'Running cost', icon: Coins },
+  ],
+}
+
+function useIsDeveloper(): boolean {
+  const [developer, setDeveloper] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/dev/me')
+      .then((r) => (r.ok ? r.json() : { developer: false }))
+      .then((j) => { if (!cancelled) setDeveloper(Boolean(j?.developer)) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+  return developer
+}
+
 export function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const developer = useIsDeveloper()
+  const groups = developer ? [...NAV_GROUPS, DEVELOPER_GROUP] : NAV_GROUPS
 
   if (pathname === '/login' || pathname?.startsWith('/auth/')) return null
 
@@ -125,14 +151,14 @@ export function Sidebar() {
         </div>
 
         <nav id="primary-navigation" aria-label="Main navigation" className="flex-1 overflow-y-auto scrollbar-thin px-3 py-4">
-          {NAV_GROUPS.map((group) => (
+          {groups.map((group) => (
             <div key={group.label} className="mb-5 last:mb-0">
               <p className="px-3 pb-1.5 text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/65">
                 {group.label}
               </p>
               <ul className="space-y-0.5">
                 {group.items.map((item) => {
-                  const isActive = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
+                  const isActive = item.href === '/' || item.exact ? pathname === item.href : pathname.startsWith(item.href)
                   const Icon = item.icon
                   return (
                     <li key={item.href}>

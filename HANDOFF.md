@@ -8,7 +8,7 @@
 
 **AdManager** — a multi-tenant SaaS where any business signs up, brings its **own Meta developer app** (App ID, App Secret, access token), and an AI agent runs its Meta ads: onboarding, website→knowledge base, creatives in the business's own language/script, Campaign→Ad Set→Ad publishing, sync, optimisation within code-enforced budget caps. Meta calls go **MCP first (`meta-ads-mcp`, spawned per request with the user's credentials), Graph API as fallback**. Marathi ebooks in Maharashtra was the first customer, not the product — nothing about language or market is hardcoded any more.
 
-Owner: Shivansh (ceo.realtooth@gmail.com). He judges the tool by whether a non-technical business owner can actually run ad spend through it. He authorised direct pushes to `master`, applying migrations, and setting Vercel env vars — but confirm before anything destructive or anything that spends money.
+Owner: Shivansh (shivansh.anand110@gmail.com). He judges the tool by whether a non-technical business owner can actually run ad spend through it. He authorised direct pushes to `master`, applying migrations, and setting Vercel env vars — but confirm before anything destructive or anything that spends money.
 
 ## Where everything is
 
@@ -72,6 +72,8 @@ User `ef47db24-ea14-4d0e-b9a5-9036b052921a`, ad account **act_1316138380606285 "
 **Multi-agent plan (agreed 2026-09-26, diagram in `docs/admanager-agents.html`, build brief in `MULTI-AGENT-PROMPT.md`):** one Brain (the existing AI Manager) delegating to five specialists: past-ads analyst, research agent (uses Connections), creative generator, watcher (runs on the heartbeat), editor. All read and write shared memory.
 
 **Phase 1 shipped 2026-09-27:** `src/lib/ai/agents/` — `registry.ts` (one config per specialist; only `research` is enabled, the others switch on in their phase), `specialist.ts` (allow-list gate + report validation, tested), `runner.ts` (runs a specialist through the same agent loop and `executeTool`, stores the run in `agent_runs`, writes findings to memory, per-run cost cap, background queue). The Brain calls `delegate_to_agent`. Specialists have no spend tools, and `mayExecuteWithoutApproval` queues any approval tool from a specialist even with auto-optimize on. Every paid AI call is metered into `ai_usage` (`src/lib/ai/usage.ts`, prices in `pricing.ts`); the developer view is `/admin/costs` (gated by `DEVELOPER_EMAILS`). Live run: Research agent, 19.6 s, $0.0105. Next: Phase 2 (Watcher + Creative generator).
+
+**Developer account (2026-09-28):** `shivansh.anand110@gmail.com` (user `182cbf3d-2f92-4d17-9466-7d3b4c7a43f5`) is the developer — his only main ID; never use ceo.realtooth. It has the Marathi Dnyan OpenAI key and Meta connection copied in (Vault, smoke 21/21 as that user), no business profile yet. `/admin` is the developer console (`src/app/api/dev/*`, gated by `src/lib/developer.ts`): every business read-only, chat transcripts with pasted credentials blanked (`redactSecretText`), and a test bench that runs any of the five agents or any routine on the developer's own account.
 
 **Open question that decides step 3 vs 4 first:** does this business (and the ones he'll onboard) close via website checkout (→ Pixel-driven Sales path) or via WhatsApp/DM conversation (→ Leads path first)? Ask him.
 

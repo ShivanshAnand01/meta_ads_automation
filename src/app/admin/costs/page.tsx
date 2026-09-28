@@ -6,6 +6,7 @@ import { Coins, Building2, Cpu, CalendarDays, Bot } from 'lucide-react'
 import { PageHeader, Section, StatTile, EmptyState } from '@/components/ui/metric'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
 import { getSpecialist } from '@/lib/ai/agents/registry'
+import { sourceLabel } from '@/lib/ai/usage-labels'
 import { cn } from '@/lib/utils'
 
 /**
@@ -31,22 +32,6 @@ interface CostData {
 }
 
 const RANGES = [7, 30, 90] as const
-
-function sourceLabel(source: string): string {
-  if (source.startsWith('agent:')) return getSpecialist(source.slice(6))?.name ?? source
-  if (source.startsWith('autonomous:')) return `Scheduled routine · ${source.slice(11).replace(/_/g, ' ')}`
-  const fixed: Record<string, string> = {
-    chat: 'AI Manager chat',
-    autonomous: 'Scheduled routines',
-    reflection: 'Nightly reflection',
-    approvals: 'Approved actions',
-    image: 'Images made in chat',
-    'creative:generate': 'Creatives page · generate',
-    'creative:review': 'Creatives page · review',
-    'creative:suggest': 'Creatives page · suggestions',
-  }
-  return fixed[source] ?? source
-}
 
 export default function CostsPage() {
   const [days, setDays] = useState<number>(30)
@@ -198,7 +183,7 @@ function Money({ usdValue, inr, usd }: { usdValue: number; inr: (v: number) => s
 
 function CostTable({ head, rows }: { head: [string, string, string]; rows: React.ReactNode[][] }) {
   return (
-    <div className="-mx-1 overflow-x-auto px-1">
+    <div className="relative -mx-1 overflow-x-auto px-1">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">

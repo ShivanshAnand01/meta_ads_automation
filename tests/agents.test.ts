@@ -128,3 +128,14 @@ test('background specialists use the economy model; others the business\'s own',
   assert.equal(modelForTier('openai', 'gpt-5.5', 'owner'), 'gpt-5.5')
   assert.equal(modelForTier('groq', 'llama-3.3-70b-versatile', 'economy'), 'llama-3.3-70b-versatile')
 })
+
+test('the developer account sees every specialist; businesses only the enabled ones', async () => {
+  const { toolsForUser } = await import('../src/lib/ai/tool-definitions.ts')
+  const agentsIn = (developer: boolean) => {
+    const def = toolsForUser(developer).filter((t) => t.function.name === 'delegate_to_agent')
+    assert.equal(def.length, 1, 'exactly one delegate tool')
+    return (def[0].function.parameters as { properties: { agent: { enum: string[] } } }).properties.agent.enum
+  }
+  assert.deepEqual(agentsIn(true), [...AGENT_IDS])
+  assert.deepEqual(agentsIn(false), enabledSpecialists().map((s) => s.id))
+})

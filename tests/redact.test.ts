@@ -24,3 +24,13 @@ test('the input object is not mutated', () => {
   redactSecrets(args)
   assert.equal(args.access_token, 'EAAG')
 })
+
+test('credentials pasted into chat text are blanked; ordinary text is not', async () => {
+  const { redactSecretText } = await import('../src/lib/redact.ts')
+  const msg = 'App secret 0123456789abcdef0123456789abcdef and token EAAGm0PX4ZCpsBAKZCkZAbcdefghijklmnop, key sk-proj-abcdefghijklmnop1234'
+  const out = redactSecretText(msg)
+  assert.equal(out.includes('0123456789abcdef'), false)
+  assert.equal(out.includes('EAAG'), false)
+  assert.equal(out.includes('sk-proj'), false)
+  assert.equal(redactSecretText('Budget ₹500/day for Pune, ad account 1316138380606285'), 'Budget ₹500/day for Pune, ad account 1316138380606285')
+})

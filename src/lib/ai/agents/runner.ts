@@ -9,9 +9,10 @@ import { getStrategy, buildStrategyContext } from '@/lib/ai/strategy'
 import { getRecentMemory, buildMemoryContext, addMemory, type EmbedConfig } from '@/lib/ai/memory'
 import { modelForTier } from '@/lib/ai/model-catalog'
 import { redactSecrets } from '@/lib/redact'
+import { isDeveloperUserId } from '@/lib/developer'
 import type { AIProviderType } from '@/lib/ai/types'
 import type { MeteredUsage } from '@/lib/ai/usage'
-import { getSpecialist, SPECIALIST_BASE_PROMPT, type SpecialistConfig, type SpecialistReport } from './registry'
+import { getSpecialist, specialistsFor, SPECIALIST_BASE_PROMPT, type SpecialistConfig, type SpecialistReport } from './registry'
 import {
   buildSpecialistExecutor, specialistToolContext, specialistToolDefinitions, parseSpecialistReport,
   type ToolLogEntry,
@@ -67,11 +68,12 @@ export async function delegateToAgent(
   const brief = String(args.brief ?? '').trim()
   const background = args.background === true || args.background === 'true'
   const agent = getSpecialist(agentId)
+  const developer = await isDeveloperUserId(ctx.userId)
 
-  if (!agent || !agent.enabled) {
+  if (!agent || !(agent.enabled || developer)) {
     return {
       runId: null, agent: agentId, status: 'failed',
-      message: `There is no available specialist called "${agentId}". Available: ${availableList()}.`,
+      message: `There is no available specialist called "${agentId}". Available: ${availableList(developer)}.`,
     }
   }
   if (!brief) {
@@ -104,12 +106,8 @@ export async function delegateToAgent(
   return runSpecialist(row, agent, { budgetMs: agent.interactiveBudgetMs })
 }
 
-function availableList(): string {
-  return ['research', 'past_ads_analyst', 'creative', 'watcher', 'editor']
-    .map((id) => getSpecialist(id))
-    .filter((s): s is SpecialistConfig => Boolean(s?.enabled))
-    .map((s) => s.id)
-    .join(', ') || 'none yet'
+function availableList(developer: boolean): string {
+  return specialistsFor(developer).map((s) => s.id).join(', ') || 'none yet'
 }
 
 // ── Running one specialist ───────────────────────────────────────────────
@@ -328,11 +326,12 @@ export async function processAgentQueue(params: { budgetMs: number; limit?: numb
     if (!claimed || claimed.length === 0) continue
 
     const agent = getSpecialist(r.agent)
+    const allowed = Boolean(agent?.enabled) || (await isDeveloperUserId(r.user_id))
     const run: AgentRunRow = {
       id: r.id, userId: r.user_id, agent: r.agent, brief: r.brief, mode: r.mode, status: 'running',
       conversationId: r.conversation_id, parentRunId: r.parent_run_id,
     }
-    if (!agent || !agent.enabled) {
+    if (!agent || !allowed) {
       const error = `Specialist "${r.agent}" is not available.`
       await finishRun(r.id, { status: 'failed', error, toolLog: [], totals: { inputTokens: 0, outputTokens: 0, costUsd: 0 }, model: null })
       results.push({ runId: r.id, agent: r.agent, status: 'failed', error, message: error })

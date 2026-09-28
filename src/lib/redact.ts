@@ -25,3 +25,16 @@ export function redactSecrets<T>(value: T, depth = 0): T {
   }
   return out as T
 }
+
+// Credentials pasted into free text (a chat message during onboarding):
+// Meta access tokens, OpenAI/Anthropic keys, bearer headers, 32-hex app secrets.
+const SECRET_TEXT = [
+  /\bEAA[A-Za-z0-9]{20,}\b/g,
+  /\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{16,}\b/g,
+  /\bBearer\s+[A-Za-z0-9._~+/-]{16,}=*/gi,
+  /\b[a-f0-9]{32}\b/gi,
+]
+
+export function redactSecretText(text: string): string {
+  return SECRET_TEXT.reduce((t, re) => t.replace(re, REDACTED), text)
+}

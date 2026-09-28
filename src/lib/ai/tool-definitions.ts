@@ -2,7 +2,7 @@ import type { ToolDefinition } from './types'
 import { DELIVERY_TOOLS } from './tool-definitions.delivery'
 import { ONBOARDING_TOOLS } from './tool-definitions.onboarding'
 import { INTEGRATION_TOOLS } from './tool-definitions.integrations'
-import { AGENT_TOOLS } from './tool-definitions.agents'
+import { AGENT_TOOLS, DEVELOPER_AGENT_TOOLS } from './tool-definitions.agents'
 
 /**
  * LOCAL_TOOLS — tools that operate entirely on the local platform database.
@@ -881,6 +881,15 @@ export const ALL_TOOLS: ToolDefinition[] = (() => {
   }
   return out
 })()
+
+/**
+ * The AI Manager's tools for one account. The developer's delegate tool lists
+ * every specialist; businesses see only the ones switched on.
+ */
+export function toolsForUser(developer: boolean): ToolDefinition[] {
+  if (!developer) return ALL_TOOLS
+  return [...ALL_TOOLS.filter((t) => t.function.name !== 'delegate_to_agent'), ...DEVELOPER_AGENT_TOOLS]
+}
 
 /** Every tool name the dispatcher can be asked for. Used by tests. */
 export const ALL_TOOL_NAMES = ALL_TOOLS.map((t) => t.function.name)
