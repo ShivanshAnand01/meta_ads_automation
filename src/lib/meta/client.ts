@@ -16,6 +16,9 @@ import type {
 // Pin one version and bump deliberately. Meta drops versions ~2 years after
 // release, so this needs a calendar reminder, not a surprise 400 in production.
 export const GRAPH_API_VERSION = 'v23.0'
+
+/** Longest we wait for Meta on one call. Image uploads, the slowest, take a few seconds. */
+const REQUEST_TIMEOUT_MS = 45_000
 const BASE_URL = `https://graph.facebook.com/${GRAPH_API_VERSION}`
 
 /** Max pages to walk when following `paging.next`. Guards runaway loops. */
@@ -151,13 +154,24 @@ export class MetaApiClient {
       response = await fetch(url.toString(), {
         ...options,
         headers: { 'Content-Type': 'application/json', ...options.headers },
+        // A stalled connection used to hang a publish for minutes with no error.
+        signal: options.signal ?? AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       })
     } catch (err) {
-      if (attempt < 3) {
+      // Only reads are retried. A write that timed out may still have gone
+      // through on Meta's side, and sending it again would duplicate it.
+      const isRead = !options.method || options.method.toUpperCase() === 'GET'
+      if (isRead && attempt < 3) {
         await sleep(2 ** attempt * 500 + Math.random() * 300)
         return this.request<T>(endpoint, options, params, attempt + 1)
       }
-      throw new MetaApiError(err instanceof Error ? err.message : 'Network error reaching Meta', { httpStatus: 0 })
+      const timedOut = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')
+      throw new MetaApiError(
+        timedOut
+          ? `Meta did not answer within ${REQUEST_TIMEOUT_MS / 1000} s.${isRead ? '' : ' Check Ads Manager before retrying: the change may have gone through.'}`
+          : err instanceof Error ? err.message : 'Network error reaching Meta',
+        { httpStatus: 0 },
+      )
     }
 
     let data: unknown
@@ -202,7 +216,7 @@ export class MetaApiClient {
 
     let pages = 1
     while (page.paging?.next && pages < MAX_PAGES) {
-      const res = await fetch(page.paging.next)
+      const res = await fetch(page.paging.next, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) })
       if (!res.ok) break
       page = (await res.json()) as Paged<T>
       out.push(...(page.data || []))

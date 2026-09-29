@@ -383,7 +383,9 @@ export async function publishFullCampaign(input: PublishCampaignInput): Promise<
 
   for (const creative of selected) {
     try {
-      const created = await client.createAdCreative({
+      // Reuse a Meta creative made by an earlier attempt (e.g. the ad step
+      // failed on billing): making it again leaves orphans in the account.
+      const created = creative.metaCreativeId ? { id: creative.metaCreativeId as string } : await client.createAdCreative({
         name: creative.title || 'Ad Creative',
         body: creative.primaryText || creative.description || '',
         title: creative.headline || creative.title || '',
@@ -394,6 +396,9 @@ export async function publishFullCampaign(input: PublishCampaignInput): Promise<
         pageId,
         allowedImageHostSuffixes: allowedImageHosts,
       })
+      if (!creative.metaCreativeId) {
+        await db.adCreative.update({ where: { id: creative.id }, data: { metaCreativeId: created.id } }).catch(() => {})
+      }
 
       const ad = await client.createAd({
         name: creative.title || 'Ad',
