@@ -30,6 +30,12 @@ export async function GET() {
   }
 }
 
+// Approving runs the deferred action right here, and the slowest ones are the
+// most important: publish_full_campaign walks Graph several times and uploads
+// the image. Without this, the platform default could cut it off halfway,
+// leaving a campaign with no ad and the approval stuck on "pending".
+export const maxDuration = 120
+
 export async function POST(request: Request) {
   try {
     const userId = await requireUserId()
