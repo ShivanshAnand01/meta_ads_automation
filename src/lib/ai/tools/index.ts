@@ -164,7 +164,10 @@ export async function executeTool(
       }
       status = 'error'
     }
-    if (result && typeof result === 'object' && 'error' in (result as Record<string, unknown>)) status = 'error'
+    // A tool that reports failure in its result (publish returns success:false)
+    // is a failure too; it used to be audited as "success".
+    const r = result as Record<string, unknown> | null
+    if (r && typeof r === 'object' && ('error' in r || r.success === false)) status = 'error'
   } catch (err) {
     status = 'error'
     result = { error: err instanceof Error ? err.message : 'Tool execution failed' }

@@ -320,10 +320,14 @@ export async function publishFullCampaign(input: PublishCampaignInput): Promise<
   }
 
   // ── 2. Ad Set ──────────────────────────────────────────────────────────
-  const targeting = await buildTargeting(client, input.targeting, warnings)
-
-  let metaAdSetId: string
-  try {
+  // A retry after a failed ad (the usual case: the owner fixes something and
+  // publishes again) reuses the ad set it already made instead of stacking a
+  // second one under the same campaign.
+  let metaAdSetId: string | undefined = campaign.metaAdSetId || undefined
+  if (metaAdSetId) {
+    warnings.push('Ad set already exists on Meta — reusing it and adding the ads to it.')
+  } else try {
+    const targeting = await buildTargeting(client, input.targeting, warnings)
     const adSet = await client.createAdSet({
       name: input.adSetName || `${campaign.name} — Ad Set`,
       campaignId: metaCampaignId!,
@@ -338,6 +342,7 @@ export async function publishFullCampaign(input: PublishCampaignInput): Promise<
       promotedObject,
     })
     metaAdSetId = adSet.id
+    await db.campaign.update({ where: { id: campaignId }, data: { metaAdSetId } })
   } catch (err) {
     return {
       success: false,
@@ -392,7 +397,7 @@ export async function publishFullCampaign(input: PublishCampaignInput): Promise<
 
       const ad = await client.createAd({
         name: creative.title || 'Ad',
-        adsetId: metaAdSetId,
+        adsetId: metaAdSetId!,
         creativeId: created.id,
         status,
       })

@@ -43,12 +43,15 @@ export class MetaApiError extends Error {
   subcode?: number
   type?: string
   fbtraceId?: string
+  /** Meta's own explanation (error_user_title / error_user_msg). "Invalid parameter" alone says nothing. */
+  userTitle?: string
+  userMessage?: string
   httpStatus: number
   isRateLimit: boolean
 
   constructor(
     message: string,
-    opts: { code?: number; subcode?: number; type?: string; fbtraceId?: string; httpStatus: number },
+    opts: { code?: number; subcode?: number; type?: string; fbtraceId?: string; userTitle?: string; userMessage?: string; httpStatus: number },
   ) {
     super(message)
     this.name = 'MetaApiError'
@@ -56,6 +59,8 @@ export class MetaApiError extends Error {
     this.subcode = opts.subcode
     this.type = opts.type
     this.fbtraceId = opts.fbtraceId
+    this.userTitle = opts.userTitle
+    this.userMessage = opts.userMessage
     this.httpStatus = opts.httpStatus
     this.isRateLimit = isRetryableCode(opts.code) || opts.httpStatus === 429
   }
@@ -65,13 +70,22 @@ export class MetaApiError extends Error {
     if (this.code === 190) return 'Your Meta access token has expired or been revoked. Reconnect your Meta account.'
     if (this.isRateLimit) return 'Meta is rate-limiting this ad account right now. Try again in a few minutes.'
     if (this.code === 200 || this.code === 10) return 'Your Meta app is missing a permission for this action (ads_management).'
-    if (this.code === 100) return `Meta rejected the request: ${this.message}`
-    return this.message
+    const detail = this.userMessage || this.userTitle
+    // Every business brings its own Meta app, and a new one starts in
+    // Development mode, which can make campaigns but not ads. Say how to fix it.
+    if (/development mode/i.test(`${detail} ${this.message}`)) {
+      return 'Your Meta developer app is still in Development mode, which cannot publish ads. Open developers.facebook.com → My Apps → your app, add a Privacy Policy URL under App settings → Basic, then switch App Mode to Live and publish again.'
+    }
+    if (this.code === 100) return `Meta rejected the request: ${detail || this.message}`
+    return detail ? `${this.message}: ${detail}` : this.message
   }
 }
 
 interface GraphErrorBody {
-  error?: { message?: string; code?: number; error_subcode?: number; type?: string; fbtrace_id?: string }
+  error?: {
+    message?: string; code?: number; error_subcode?: number; type?: string; fbtrace_id?: string
+    error_user_title?: string; error_user_msg?: string
+  }
 }
 
 interface Paged<T> {
@@ -160,6 +174,8 @@ export class MetaApiClient {
         subcode: errBody?.error_subcode,
         type: errBody?.type,
         fbtraceId: errBody?.fbtrace_id,
+        userTitle: errBody?.error_user_title,
+        userMessage: errBody?.error_user_msg,
         httpStatus: response.status,
       })
 
@@ -268,6 +284,10 @@ export class MetaApiClient {
     }
     if (campaign.dailyBudget != null) body.daily_budget = toMinorUnits(campaign.dailyBudget)
     if (campaign.lifetimeBudget != null) body.lifetime_budget = toMinorUnits(campaign.lifetimeBudget)
+    // Without a campaign budget Meta now requires an explicit answer here
+    // (v23, subcode 4834011) and rejects the campaign otherwise. False keeps
+    // each ad set to its own budget, so the owner's caps hold exactly.
+    if (campaign.dailyBudget == null && campaign.lifetimeBudget == null) body.is_adset_budget_sharing_enabled = false
     if (campaign.startTime) body.start_time = campaign.startTime
     if (campaign.endTime) body.stop_time = campaign.endTime
 

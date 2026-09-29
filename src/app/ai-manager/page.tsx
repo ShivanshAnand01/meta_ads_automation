@@ -311,7 +311,12 @@ function AIManagerPageInner() {
         body: JSON.stringify({ approvalId: id, decision }),
       })
       const json = await res.json()
-      if (res.ok) {
+      if (res.ok && json.status === 'failed') {
+        // It ran, but did not work — say what went wrong instead of "done".
+        const why = json.result?.message || json.result?.error || 'The action did not succeed.'
+        toast.error(`Approved, but it failed: ${why}`, { duration: 12000 })
+        setApprovals((prev) => prev.filter((a) => a.id !== id))
+      } else if (res.ok) {
         toast.success(decision === 'approve' ? 'Approved and run' : 'Rejected')
         setApprovals((prev) => prev.filter((a) => a.id !== id))
       } else {

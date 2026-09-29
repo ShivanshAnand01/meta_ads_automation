@@ -98,6 +98,10 @@ export function adaptArgsForMcp(
         out.special_ad_categories = (out.special_ad_categories as string[]).map((c) => SPECIAL_CATEGORY_MAP[c] ?? c)
       }
       if (!out.status) out.status = 'PAUSED'
+      // Same Meta rule as the Graph path: no campaign budget means this must be explicit.
+      if (out.daily_budget == null && out.lifetime_budget == null && out.is_adset_budget_sharing_enabled === undefined) {
+        out.is_adset_budget_sharing_enabled = false
+      }
       break
     }
 

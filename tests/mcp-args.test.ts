@@ -102,3 +102,10 @@ test('ad set defaults to PAUSED and leaves explicit location_types alone', () =>
   assert.equal(out.configured_status, 'PAUSED')
   assert.deepEqual((out.targeting as { geo_locations: { location_types: string[] } }).geo_locations.location_types, ['home'])
 })
+
+test('create_campaign without a campaign budget says no to ad set budget sharing (Meta v23 requires it)', () => {
+  const out = adaptArgsForMcp('create_campaign', { name: 'x', objective: 'OUTCOME_TRAFFIC' }, ctx)
+  assert.equal(out.is_adset_budget_sharing_enabled, false)
+  const withBudget = adaptArgsForMcp('create_campaign', { name: 'x', objective: 'OUTCOME_TRAFFIC', daily_budget: 100 }, ctx)
+  assert.equal('is_adset_budget_sharing_enabled' in withBudget, false)
+})

@@ -114,15 +114,21 @@ export async function POST(request: Request) {
 
     const result = await executeTool(toolCtx, approval.toolName, args)
 
+    // Approved and run are not the same as succeeded: a publish Meta rejected
+    // used to be recorded as "executed" and shown as done.
+    const r = result as Record<string, unknown> | null
+    const failed = Boolean(r && typeof r === 'object' && ('error' in r || r.success === false || r.blocked === true))
+    const status = failed ? 'failed' : 'executed'
+
     await db.pendingApproval.update({
       where: { id: approvalId },
       data: {
-        status: 'executed', decidedBy: userId, decidedAt: new Date(),
+        status, decidedBy: userId, decidedAt: new Date(),
         result: JSON.stringify(result),
       },
     })
 
-    return Response.json({ success: true, status: 'executed', result })
+    return Response.json({ success: !failed, status, result })
   } catch (error) {
     return handleError(error, 'Failed to process approval')
   }
