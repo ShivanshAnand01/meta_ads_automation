@@ -286,6 +286,23 @@ export class MetaApiClient {
     buyingType?: string
     specialAdCategories?: SpecialAdCategory[]
   }): Promise<{ id: string }> {
+    return this.request<{ id: string }>(`/act_${this.requireAccount()}/campaigns`, {
+      method: 'POST',
+      body: JSON.stringify(this.campaignBody(campaign)),
+    })
+  }
+
+  private campaignBody(campaign: {
+    name: string
+    objective: string
+    status: string
+    dailyBudget?: number
+    lifetimeBudget?: number
+    startTime?: string
+    endTime?: string
+    buyingType?: string
+    specialAdCategories?: SpecialAdCategory[]
+  }): Record<string, unknown> {
     const body: Record<string, unknown> = {
       name: campaign.name,
       objective: campaign.objective,
@@ -304,11 +321,7 @@ export class MetaApiClient {
     if (campaign.dailyBudget == null && campaign.lifetimeBudget == null) body.is_adset_budget_sharing_enabled = false
     if (campaign.startTime) body.start_time = campaign.startTime
     if (campaign.endTime) body.stop_time = campaign.endTime
-
-    return this.request<{ id: string }>(`/act_${this.requireAccount()}/campaigns`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    })
+    return body
   }
 
   async updateCampaign(campaignId: string, updates: Record<string, unknown>): Promise<{ success: boolean }> {
@@ -540,6 +553,17 @@ export class MetaApiClient {
       imageHash = uploaded.hash
     }
 
+    const data = await this.request<{ id: string }>(`/act_${accountId}/adcreatives`, {
+      method: 'POST',
+      body: JSON.stringify(this.creativeBody({ ...creative, imageHash })),
+    })
+    return { id: data.id, imageHash }
+  }
+
+  private creativeBody(creative: {
+    name: string; body: string; title: string; link: string; callToAction: string
+    pageId?: string; description?: string; imageHash?: string
+  }): Record<string, unknown> {
     const linkData: Record<string, unknown> = {
       message: creative.body,
       link: creative.link,
@@ -550,21 +574,49 @@ export class MetaApiClient {
     // `image_hash` is the correct field for an uploaded image. The old code
     // put the hash in `picture`, which expects a URL — Meta accepted it and
     // silently produced an imageless ad.
-    if (imageHash) linkData.image_hash = imageHash
-
-    const body: Record<string, unknown> = {
+    if (creative.imageHash) linkData.image_hash = creative.imageHash
+    return {
       name: creative.name,
       object_story_spec: {
         ...(creative.pageId ? { page_id: creative.pageId } : {}),
         link_data: linkData,
       },
     }
+  }
 
-    const data = await this.request<{ id: string }>(`/act_${accountId}/adcreatives`, {
+  // ── Readiness (nothing here creates anything) ─────────────────────────
+
+  /**
+   * Ask Meta to check a campaign or creative exactly as it would be sent,
+   * without saving it (execution_options: validate_only). Catches new
+   * required fields and account problems before the owner approves.
+   */
+  async validateCampaign(campaign: Parameters<MetaApiClient['createCampaign']>[0]): Promise<void> {
+    await this.request(`/act_${this.requireAccount()}/campaigns`, {
       method: 'POST',
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...this.campaignBody(campaign), execution_options: ['validate_only'] }),
     })
-    return { id: data.id, imageHash }
+  }
+
+  async validateAdCreative(creative: Parameters<MetaApiClient['creativeBody']>[0]): Promise<void> {
+    await this.request(`/act_${this.requireAccount()}/adcreatives`, {
+      method: 'POST',
+      body: JSON.stringify({ ...this.creativeBody(creative), execution_options: ['validate_only'] }),
+    })
+  }
+
+  /** Whether the ad account can run ads at all: active, and a payment method on file. */
+  async getAccountHealth(): Promise<{ accountStatus: number | null; disableReason: number | null; hasPaymentMethod: boolean; paymentMethod: string | null }> {
+    const d = await this.request<{
+      account_status?: number; disable_reason?: number; funding_source?: string
+      funding_source_details?: { id?: string; display_string?: string }
+    }>(`/act_${this.requireAccount()}`, {}, { fields: 'account_status,disable_reason,funding_source,funding_source_details' })
+    return {
+      accountStatus: d.account_status ?? null,
+      disableReason: d.disable_reason ?? null,
+      hasPaymentMethod: Boolean(d.funding_source || d.funding_source_details?.id),
+      paymentMethod: d.funding_source_details?.display_string ?? null,
+    }
   }
 
   // ── Audiences ─────────────────────────────────────────────────────────

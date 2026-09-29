@@ -9,6 +9,7 @@ import { getStrategy, updateStrategy, buildStrategyContext } from '@/lib/ai/stra
 import { getRecentMemory, addMemory } from '@/lib/ai/memory'
 import { syncCampaignInsights, syncFromMeta, setCampaignStatus, getAccountSummary } from '@/lib/meta/sync'
 import { publishFullCampaign } from '@/lib/meta/publish'
+import { checkPublishReadiness, describeReadiness } from '@/lib/meta/readiness'
 import { generateChart } from '@/lib/ai/chart'
 import { transcribeAudio, speak } from '@/lib/ai/voice'
 import type { MemoryKind } from '@/lib/ai/memory'
@@ -546,6 +547,15 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
       return await syncFromMeta(userId)
     }
     case 'publish_campaign_to_meta':
+    case 'check_publish_readiness': {
+      const r = await checkPublishReadiness(userId, {
+        campaignId: String(args.campaign_id || args.campaignId || ''),
+        creativeIds: (args.creative_ids || args.creativeIds) as string[] | undefined,
+        linkUrl: (args.link_url || args.linkUrl) as string | undefined,
+        optimizationGoal: (args.optimization_goal || args.optimizationGoal) as string | undefined,
+      })
+      return { ...r, summary: describeReadiness(r) }
+    }
     case 'publish_full_campaign': {
       // Both names route through the full Campaign -> Ad Set -> Ad pipeline.
       // Publishing only a campaign object (the old behaviour) produces

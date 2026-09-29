@@ -20,6 +20,27 @@ const SPEND_WARNING =
   '⚠️ SPEND-AFFECTING. Requires user approval unless auto-optimize is enabled, and is rejected outright if it would breach the account budget caps.'
 
 export const DELIVERY_TOOLS: ToolDefinition[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'check_publish_readiness',
+      description:
+        'Check whether a campaign draft can be published right now, WITHOUT creating anything: Meta connection and token, ad account active, ' +
+        "payment method on file, Facebook Page, Pixel (for sales campaigns), approved creatives, budget caps, landing page, and Meta's own " +
+        'validation of the campaign and creative. Call this before proposing publish_full_campaign, and tell the owner exactly what is missing. ' +
+        'publish_full_campaign runs the same check itself and refuses to queue an approval that would fail.',
+      parameters: {
+        type: 'object',
+        properties: {
+          campaign_id: { type: 'string', description: 'Local campaign draft id.' },
+          creative_ids: { type: 'array', items: { type: 'string' }, description: 'Creatives to publish. Defaults to those attached to the campaign.' },
+          link_url: { type: 'string', description: 'Landing page, if not on the campaign.' },
+          optimization_goal: { type: 'string', description: 'e.g. LANDING_PAGE_VIEWS, OFFSITE_CONVERSIONS. Defaults from the objective.' },
+        },
+        required: ['campaign_id'],
+      },
+    },
+  },
   // ── Reads ───────────────────────────────────────────────────────────
   {
     type: 'function',

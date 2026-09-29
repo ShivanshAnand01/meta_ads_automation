@@ -45,6 +45,7 @@ const STEP_LABELS: Record<string, [string, string]> = {
   publish_campaign_to_meta: ['Publishing to Meta', 'Published to Meta'],
   search_knowledge_base: ['Searching your knowledge base', 'Searched your knowledge base'],
   research_web: ['Researching the web', 'Researched the web'],
+  check_publish_readiness: ['Checking the campaign can publish', 'Checked the campaign can publish'],
   list_connected_tools: ['Checking connected tools', 'Checked connected tools'],
   call_connected_tool: ['Running a connected tool', 'Ran a connected tool'],
   get_memory: ['Recalling what worked before', 'Recalled what worked before'],

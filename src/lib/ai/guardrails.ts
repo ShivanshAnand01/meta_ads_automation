@@ -24,6 +24,8 @@ export const SAFE_TOOLS = new Set([
   'list_campaigns', 'list_creatives', 'list_ad_sets', 'list_ads',
   'list_audiences', 'list_pages', 'list_pixels',
   'get_insights', 'compare_performance', 'estimate_audience_size', 'preview_ad',
+  // Reads and Meta validate_only checks; creates nothing
+  'check_publish_readiness',
   'sync_campaign_insights', 'sync_from_meta',
   // Local CRUD — drafts, not live spend
   'create_local_campaign', 'update_local_campaign',

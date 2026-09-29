@@ -15,6 +15,7 @@ import {
   metaListAudiences, metaCreateCustomAudience, metaCreateLookalikeAudience, metaPreviewAd,
 } from '@/lib/meta/ops'
 import { getMetaConnection } from '@/lib/meta/user-client'
+import { checkPublishReadiness, describeReadiness } from '@/lib/meta/readiness'
 import { tryMcp } from '@/lib/meta/mcp-bridge'
 import type { MetaTargeting, OptimizationGoal, BillingEvent, SpecialAdCategory } from '@/lib/meta/types'
 
@@ -27,6 +28,17 @@ export interface ToolExecutionContext {
   actor?: 'agent' | 'autonomous' | `specialist:${string}`
   /** When true (autonomous + autoOptimize), approval tools execute directly. */
   autoApproved?: boolean
+}
+
+const PUBLISH_TOOLS = new Set(['publish_full_campaign', 'publish_campaign_to_meta'])
+
+function readinessInput(args: Record<string, unknown>) {
+  return {
+    campaignId: String(args.campaignId || args.campaign_id || ''),
+    creativeIds: (args.creativeIds || args.creative_ids) as string[] | undefined,
+    linkUrl: (args.linkUrl || args.link_url) as string | undefined,
+    optimizationGoal: (args.optimizationGoal || args.optimization_goal) as string | undefined,
+  }
 }
 
 /** How long a queued approval stays executable before it is considered stale. */
@@ -58,6 +70,7 @@ const LOCAL_TOOL_NAMES = new Set([
   'generate_chart', 'generate_report', 'transcribe_audio', 'speak',
   'search_memory', 'reflect_and_learn',
   'research_web', 'list_connected_tools', 'call_connected_tool',
+  'check_publish_readiness',
 ])
 
 /**
@@ -95,6 +108,19 @@ export async function executeTool(
       spentThisMonth: budget.spentThisMonth,
       dailyCap: budget.dailyCap,
       monthlyCap: budget.monthlyCap,
+    }
+  }
+
+  // ── 1b. Publish readiness ────────────────────────────────────────────
+  // An approval that then fails on Meta is worse than no approval: it wastes
+  // the owner's trust in the button and can leave a half-built campaign.
+  // Check first — nothing here creates anything on Meta.
+  if (PUBLISH_TOOLS.has(tool)) {
+    const readiness = await checkPublishReadiness(userId, readinessInput(args)).catch(() => null)
+    if (readiness && !readiness.ready) {
+      await logAction({ userId, conversationId, toolName: tool, arguments: args, status: 'error', actor: ctx.actor,
+        result: { blocked: 'not_ready', blockers: readiness.blockers.map((b) => b.code) } as any })
+      return { blocked: true, reason: 'not_ready', readiness, message: describeReadiness(readiness) }
     }
   }
 
