@@ -58,10 +58,10 @@ User `ef47db24-ea14-4d0e-b9a5-9036b052921a`, ad account **act_1316138380606285 "
 10. **Do not bypass auth to screenshot signed-in pages.** A dev-only impersonation patch was refused by the permission classifier and reverted. What works instead: a throwaway Next app in a git-ignored `.harness/` folder (add it to `.git/info/exclude`), with its own port, `turbopack.root` set to the repo, `tsconfig` paths `@/*` → `../src/*`, `@import` of `src/app/globals.css` plus `@source "../../src"`, and a module that replaces `window.fetch` with sample data (including a streaming SSE reply) before rendering the real page component. Delete it before committing. If the Browser pane is hidden, screenshots time out; check through `get_page_text` and same-origin iframes of a fixed width instead.
 11. **OpenAI models do not share parameters.** GPT-5+ reject `max_tokens`; GPT-5.5 and GPT-6 reject any non-default `temperature`. The provider now sends `max_completion_tokens` and drops a rejected optional parameter per model, then retries. Always call OpenAI through the provider.
 12. **One word for "approved".** The UI wrote `approved` while publishing accepted only `verified`, and an AI review silently set `verified`. Use `src/lib/ai/review-status.ts`; an AI review never approves.
+13. **Image calls take 20–60 s.** A 22 s timeout silently dropped to an unlicensed free fallback. OpenAI images now get 120 s and the fallback is opt-in only.
 14. **Meta v23 requires `is_adset_budget_sharing_enabled`** on any campaign without a campaign budget (subcode 4834011). Meta's reason is in `error_user_msg`, which the client used to drop; "Invalid parameter" alone told us nothing. Use `execution_options: ["validate_only"]` to test a write without creating anything.
 15. **A business's own Meta app starts in Development mode**, which can create campaigns and ad sets but not ads. Onboarding must tell them to switch it to Live.
 16. **Failures were recorded as successes**: a result with `success:false` was audited "success", the approval marked "executed", and the UI toasted "Approved and run". All three now say failed.
-13. **Image calls take 20–60 s.** A 22 s timeout silently dropped to an unlicensed free fallback. OpenAI images now get 120 s and the fallback is opt-in only.
 
 ## Next steps, in order
 
