@@ -22,6 +22,7 @@ const ROUTINES: Array<{ id: string; name: string; what: string }> = [
   { id: 'anomaly_detection', name: 'Anomaly check', what: 'Compares the last 7 days with the 7 before.' },
   { id: 'weekly_report', name: 'Weekly report', what: 'Writes the weekly summary.' },
   { id: 'reflection', name: 'Reflection', what: 'Learns from recent actions and saves learnings to memory.' },
+  { id: 'learning_review', name: 'Learning review', what: 'Refreshes what the AI knows about the owner and rewrites its working notes from real outcomes.' },
 ]
 
 interface RunOutcome { label: string; ok: boolean; text: string; at: string }

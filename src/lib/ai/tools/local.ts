@@ -10,6 +10,7 @@ import { getRecentMemory, addMemory } from '@/lib/ai/memory'
 import { syncCampaignInsights, syncFromMeta, setCampaignStatus, getAccountSummary } from '@/lib/meta/sync'
 import { publishFullCampaign } from '@/lib/meta/publish'
 import { checkPublishReadiness, describeReadiness } from '@/lib/meta/readiness'
+import { buildCopyGuidance } from '@/lib/ai/learning/context'
 import { generateChart } from '@/lib/ai/chart'
 import { transcribeAudio, speak } from '@/lib/ai/voice'
 import type { MemoryKind } from '@/lib/ai/memory'
@@ -395,7 +396,7 @@ export async function executeLocalTool(tool: string, args: Record<string, unknow
         try {
           const copyPrompt = `Generate a Meta Ads creative for: "${product}". Angle: ${angle}. Target audience: ${profile.targetAudience ?? 'customers'} in ${where}.${profile.tone ? ` Tone: ${profile.tone}.` : ''}${profile.avoid ? ` Never: ${profile.avoid}.` : ''} Respond ONLY with valid JSON: {"title":"(English management name)","description":"(English, one sentence strategy)","primaryText":"(ad copy in ${lang}, max 125 characters)","headline":"(headline in ${lang}, max 40 characters)","callToAction":"${cta}","targeting":"(short targeting description)","expectedRoas":0,"reasoning":"(why this works)"}.`
           const validated = await generateStructured(ctx.provider, creativeSuggestionSchema, copyPrompt,
-            `You are an expert ad copywriter writing in ${lang} for ${where}. ${buildProfileContext(profile)} Respond only with valid JSON, no markdown.`)
+            `You are an expert ad copywriter writing in ${lang} for ${where}. ${buildProfileContext(profile)}\n${await buildCopyGuidance(userId)}\nRespond only with valid JSON, no markdown.`)
           const limited = enforceCopyLimits(validated)
           copyWarnings.push(...limited.copyWarnings)
           copy = { title: limited.title, description: limited.description, primaryText: limited.primaryText, headline: limited.headline, callToAction: limited.callToAction }

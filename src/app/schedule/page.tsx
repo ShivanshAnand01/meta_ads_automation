@@ -9,7 +9,7 @@ import { PageHeader, StatusPill, EmptyState } from '@/components/ui/metric'
 import { TextField, TextAreaField, ChipGroup, Field } from '@/components/ui/field'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { PageSkeleton } from '@/components/ui/page-skeleton'
-import { Plus, Play, Pause, Trash2, Loader2, CalendarClock, Sun, Gauge, Radar, FileBarChart, Brain, Wand2 } from 'lucide-react'
+import { Plus, Play, Pause, Trash2, Loader2, CalendarClock, Sun, Gauge, Radar, FileBarChart, Brain, Wand2, Sparkles } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 /**
@@ -29,6 +29,7 @@ const ROUTINES: Record<string, { label: string; description: string; icon: Lucid
   anomaly_detection: { label: 'Anomaly watch', description: 'Catches sudden drops in results or jumps in cost.', icon: Radar, suggested: '30 3 * * *' },
   weekly_report: { label: 'Weekly report', description: 'Monday summary: winners, losers, and next week\'s plan.', icon: FileBarChart, suggested: '30 3 * * 1' },
   reflection: { label: 'Learn from the week', description: 'Updates the agent\'s memory of what worked for your business.', icon: Brain, suggested: '30 3 * * 0' },
+  learning_review: { label: 'Improve itself', description: 'Rewrites the AI\'s working notes from what failed, what got fixed and what you approved or rejected. Also runs weekly on its own.', icon: Sparkles, suggested: '30 3 * * 0' },
   custom: { label: 'Custom prompt', description: 'Run any instruction on a schedule.', icon: Wand2, suggested: '30 3 * * *' },
 }
 

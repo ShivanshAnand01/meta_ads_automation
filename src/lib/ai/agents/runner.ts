@@ -10,6 +10,7 @@ import { getRecentMemory, buildMemoryContext, addMemory, type EmbedConfig } from
 import { modelForTier } from '@/lib/ai/model-catalog'
 import { redactSecrets } from '@/lib/redact'
 import { isDeveloperUserId } from '@/lib/developer'
+import { buildLearningContext } from '@/lib/ai/learning/context'
 import type { AIProviderType } from '@/lib/ai/types'
 import type { MeteredUsage } from '@/lib/ai/usage'
 import { getSpecialist, specialistsFor, SPECIALIST_BASE_PROMPT, type SpecialistConfig, type SpecialistReport } from './registry'
@@ -211,6 +212,7 @@ async function buildSpecialistContext(userId: string): Promise<string> {
   try { parts.push(buildProfileContext(await getProfile(userId))) } catch {}
   try { parts.push(buildStrategyContext(await getStrategy(userId))) } catch {}
   try { parts.push(buildMemoryContext(await getRecentMemory(userId, 8))) } catch {}
+  parts.push(await buildLearningContext(userId))
   try {
     const rows = (await db.creativePlaybook.findMany({
       where: { userId, status: 'active' },

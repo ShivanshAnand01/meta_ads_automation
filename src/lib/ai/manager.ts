@@ -22,6 +22,7 @@ import { generateStructured, creativeSuggestionSchema, enforceCopyLimits } from 
 import { checkBudget, buildPacingContext } from '@/lib/ai/budget-guard'
 import { getProfile, buildProfileContext, type BusinessProfile } from '@/lib/ai/profile'
 import { buildIntegrationsContext } from '@/lib/integrations/server'
+import { buildLearningContext, buildCopyGuidance } from '@/lib/ai/learning/context'
 
 /**
  * How many past messages to keep in the model's context. Tool results are
@@ -308,6 +309,8 @@ export class AIManager {
       /* pacing is advisory here; the hard check still runs at execution time */
     }
 
+    const learningContext = await buildLearningContext(this.userId)
+
     const contextString = [
       `CONTEXT: ${metaStatus} The user has ${localCampaigns.length} local campaign(s) and ${localCreatives.length} local creative(s).`,
       'Call sync_campaign_insights before analyzing performance so you work with real Meta data.',
@@ -315,6 +318,7 @@ export class AIManager {
       integrationsContext,
       strategyContext,
       pacingContext,
+      learningContext,
       memoryContext,
       ragContext,
     ].filter(Boolean).join('\n\n')
@@ -552,7 +556,7 @@ NOTE: this conversation is long, so the ${droppedCount} oldest message(s) are no
         this.provider!,
         creativeSuggestionSchema,
         copyPrompt,
-        `You are an expert ad copywriter writing in ${lang} for ${where}. ${profile ? buildProfileContext(profile) : ''} Respond only with valid JSON, no markdown.`,
+        `You are an expert ad copywriter writing in ${lang} for ${where}. ${profile ? buildProfileContext(profile) : ''}\n${await buildCopyGuidance(this.userId)}\nRespond only with valid JSON, no markdown.`,
       )
       const limited = enforceCopyLimits(validated)
       copyWarnings.push(...limited.copyWarnings)

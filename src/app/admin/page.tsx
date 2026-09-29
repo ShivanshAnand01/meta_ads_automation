@@ -48,6 +48,7 @@ interface Overview {
   fx: { rate: number } | null
   totals: { accounts: number; active7d: number; withMeta: number; costUsd30d: number; errors7d: number; agentRuns7d: number }
   accounts: Account[]
+  suggestions: Array<{ userId: string; statement: string; evidence: string; occurrences: number; lastSeen: string }>
 }
 
 export default function DeveloperConsolePage() {
@@ -138,7 +139,24 @@ export default function DeveloperConsolePage() {
           <TabsTrigger value="bench">Test bench</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="businesses">
+        <TabsContent value="businesses" className="space-y-6">
+          {data.suggestions?.length > 0 && (
+            <Section title="Improvement ideas from the AI" description="Each business's weekly learning review flags problems the software itself caused. Read-only; fix them in code.">
+              <ul className="space-y-2">
+                {data.suggestions.map((s, i) => {
+                  const who = data.accounts.find((a) => a.userId === s.userId)
+                  return (
+                    <li key={i} className="rounded-xl border border-border px-3 py-2.5 text-sm">
+                      <p>{s.statement}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {who?.businessName || who?.email || s.userId.slice(0, 8)} · {when(s.lastSeen)}{s.occurrences > 1 ? ` · raised ${s.occurrences}×` : ''}{s.evidence ? ` · ${s.evidence}` : ''}
+                      </p>
+                    </li>
+                  )
+                })}
+              </ul>
+            </Section>
+          )}
           <Section title="All businesses" description="Most recently active first. Open one to see its setup, chats, actions and agent runs.">
             <div className="relative -mx-1 overflow-x-auto px-1">
               <table className="w-full min-w-[720px] text-sm">

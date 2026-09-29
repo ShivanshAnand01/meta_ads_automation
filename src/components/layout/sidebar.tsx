@@ -23,6 +23,7 @@ import {
   Plug,
   TerminalSquare,
   Coins,
+  Brain,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
 import { createClient } from '@/lib/supabase/client'
@@ -50,6 +51,7 @@ const NAV_GROUPS: Array<{
     items: [
       { href: '/', label: 'Dashboard', icon: LayoutDashboard },
       { href: '/ai-manager', label: 'AI Manager', icon: Sparkles, badge: 'AI' },
+      { href: '/learnings', label: 'AI learnings', icon: Brain },
     ],
   },
   {

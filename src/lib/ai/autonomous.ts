@@ -8,10 +8,13 @@ import { getRecentMemory } from '@/lib/ai/memory'
 import { getMetaConnection } from '@/lib/meta/user-client'
 import { runReflection } from '@/lib/ai/reflection'
 import { CronExpressionParser } from 'cron-parser'
+import { getProfile, buildProfileContext } from '@/lib/ai/profile'
+import { buildLearningContext } from '@/lib/ai/learning/context'
+import { runRetrospective } from '@/lib/ai/learning/retrospective'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export type Routine = 'morning_optimization' | 'budget_pacing' | 'anomaly_detection' | 'weekly_report' | 'reflection' | 'custom'
+export type Routine = 'morning_optimization' | 'budget_pacing' | 'anomaly_detection' | 'weekly_report' | 'reflection' | 'learning_review' | 'custom'
 
 const ROUTINE_PROMPTS: Record<Routine, string> = {
   morning_optimization: `Run your daily morning optimization routine. Steps:
@@ -38,6 +41,7 @@ const ROUTINE_PROMPTS: Record<Routine, string> = {
  3. Summarize what worked, what didn't, and next steps.
  4. Save a "summary" memory of the week's key learnings.`,
   custom: `Run the custom routine described in the job config.`,
+  learning_review: `Review what failed, what got fixed and what the owner decided, then rewrite the working notes. (Handled by the learning retrospective.)`,
   reflection: `Reflect on recent actions and learn. (Handled by the reflection engine — reviews the action log + performance deltas and writes durable learnings to memory.)`,
 }
 
@@ -79,6 +83,17 @@ export async function runRoutine(params: {
     return { success: r.success, conversationId: '', response: r.message, toolCalls: 0, message: r.message, error: r.error }
   }
 
+  // The learning review is its own engine too: it rewrites the AI's working
+  // notes for this business from real outcomes and the owner's decisions.
+  if (routine === 'learning_review') {
+    const r = await runRetrospective(userId)
+    if (jobId) {
+      const job = await db.scheduledJob.findUnique({ where: { id: jobId } }).catch(() => null)
+      await db.scheduledJob.update({ where: { id: jobId }, data: { lastRunAt: new Date(), nextRunAt: nextCronRun((job as any)?.cronExpression as string | undefined) } }).catch(() => {})
+    }
+    return { success: r.success, conversationId: '', response: r.message, toolCalls: 0, message: r.message, error: r.success ? undefined : r.message }
+  }
+
   // Initialise the autonomous manager (provider, strategy, tool context)
   let manager: AIManager
   try {
@@ -94,9 +109,15 @@ export async function runRoutine(params: {
     : !conn.adAccountId ? 'Meta connected but no ad account selected.' : `Meta connected (${conn.adAccountId}).`
 
   const memory = await getRecentMemory(userId, 8).catch(() => [])
+  // Routines never had the business profile either, so an autonomous run
+  // could write copy in the wrong language.
+  const profileContext = await getProfile(userId).then(buildProfileContext).catch(() => '')
+  const learningContext = await buildLearningContext(userId)
   const contextString = [
     `AUTONOMOUS RUN — routine: ${routine}. ${metaStatus}`,
+    profileContext,
     buildStrategyContext(strategy),
+    learningContext,
     buildMemoryContext(memory),
     'You are running without the client present. Act decisively within guardrails. ' +
       (strategy.autoOptimize

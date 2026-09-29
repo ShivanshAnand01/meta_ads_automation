@@ -16,6 +16,7 @@ import {
 } from '@/lib/meta/ops'
 import { getMetaConnection } from '@/lib/meta/user-client'
 import { checkPublishReadiness, describeReadiness } from '@/lib/meta/readiness'
+import { recordToolOutcome } from '@/lib/ai/learning/store'
 import { tryMcp } from '@/lib/meta/mcp-bridge'
 import type { MetaTargeting, OptimizationGoal, BillingEvent, SpecialAdCategory } from '@/lib/meta/types'
 
@@ -100,7 +101,7 @@ export async function executeTool(
   if (!budget.allowed) {
     await logAction({ userId, conversationId, toolName: tool, arguments: args, status: 'error', actor: ctx.actor,
       result: { blocked: 'budget', reason: budget.reason } as any })
-    return {
+    const blockedResult = {
       blocked: true,
       reason: 'budget_guardrail',
       message: budget.reason,
@@ -109,6 +110,8 @@ export async function executeTool(
       dailyCap: budget.dailyCap,
       monthlyCap: budget.monthlyCap,
     }
+    await recordToolOutcome(userId, tool, blockedResult)
+    return blockedResult
   }
 
   // ── 1b. Publish readiness ────────────────────────────────────────────
@@ -120,7 +123,9 @@ export async function executeTool(
     if (readiness && !readiness.ready) {
       await logAction({ userId, conversationId, toolName: tool, arguments: args, status: 'error', actor: ctx.actor,
         result: { blocked: 'not_ready', blockers: readiness.blockers.map((b) => b.code) } as any })
-      return { blocked: true, reason: 'not_ready', readiness, message: describeReadiness(readiness) }
+      const notReady = { blocked: true, reason: 'not_ready', readiness, message: describeReadiness(readiness) }
+      await recordToolOutcome(userId, tool, notReady)
+      return notReady
     }
   }
 
@@ -200,6 +205,9 @@ export async function executeTool(
   }
 
   await logAction({ userId, conversationId, toolName: tool, arguments: args, result: result as any, status, actor: ctx.actor })
+  // Every outcome teaches something: a failure becomes (or re-counts) a
+  // pitfall; a success resolves this tool's earlier pitfalls.
+  await recordToolOutcome(userId, tool, result)
   return result
 }
 

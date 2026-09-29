@@ -2,9 +2,9 @@ import { db } from '@/lib/db/supabase-db'
 import { requireUserId, handleError } from '@/lib/supabase/server'
 import { CronExpressionParser } from 'cron-parser'
 
-type Routine = 'morning_optimization' | 'budget_pacing' | 'anomaly_detection' | 'weekly_report' | 'reflection' | 'custom'
+type Routine = 'morning_optimization' | 'budget_pacing' | 'anomaly_detection' | 'weekly_report' | 'reflection' | 'learning_review' | 'custom'
 
-const ROUTINES: Routine[] = ['morning_optimization', 'budget_pacing', 'anomaly_detection', 'weekly_report', 'reflection', 'custom']
+const ROUTINES: Routine[] = ['morning_optimization', 'budget_pacing', 'anomaly_detection', 'weekly_report', 'reflection', 'learning_review', 'custom']
 
 function isValidCron(expr: unknown): boolean {
   if (typeof expr !== 'string') return false

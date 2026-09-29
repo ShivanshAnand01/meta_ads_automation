@@ -1,5 +1,6 @@
 import { db } from '@/lib/db/supabase-db'
 import { requireUserId, handleError } from '@/lib/supabase/server'
+import { recordCreativeDecision } from '@/lib/ai/learning/feedback'
 
 const EDITABLE_FIELDS = new Set([
   'title',
@@ -42,6 +43,10 @@ export async function PATCH(
       where: { id, userId },
       data,
     })
+
+    // The owner's approvals, rejections and rewrites are how the AI learns
+    // what they want their ads to say.
+    await recordCreativeDecision(userId, existing, data)
 
     return Response.json({ creative: updated })
   } catch (error) {

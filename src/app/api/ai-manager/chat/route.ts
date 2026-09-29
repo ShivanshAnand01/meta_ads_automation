@@ -21,6 +21,11 @@ import { redactSecrets, redactSecretText } from '@/lib/redact'
 import { getProfile, buildProfileContext } from '@/lib/ai/profile'
 import { buildIntegrationsContext } from '@/lib/integrations/server'
 import { checkBudget, buildPacingContext } from '@/lib/ai/budget-guard'
+import { buildLearningContext } from '@/lib/ai/learning/context'
+import { extractOwnerPreferences, PREFERENCE_EVERY_N_MESSAGES } from '@/lib/ai/learning/preferences'
+import { after } from 'next/server'
+import { createSupabaseServiceClient } from '@/lib/supabase/server'
+import { withServiceClient } from '@/lib/db/supabase-db'
 
 export const maxDuration = 300
 
@@ -264,10 +269,11 @@ export async function POST(request: Request) {
     // The chat used to build its context without the business profile, so the
     // AI Manager wrote copy without knowing the language, market or audience
     // unless it thought to call get_business_profile. Routines always had it.
-    const [profileContext, integrationsContext, pacingContext] = await Promise.all([
+    const [profileContext, integrationsContext, pacingContext, learningContext] = await Promise.all([
       getProfile(userId).then(buildProfileContext).catch(() => ''),
       buildIntegrationsContext(userId).catch(() => ''),
       checkBudget(userId, 'create_campaign', {}).then(buildPacingContext).catch(() => ''),
+      buildLearningContext(userId),
     ])
 
     const contextString = [
@@ -277,6 +283,7 @@ export async function POST(request: Request) {
       integrationsContext,
       strategyContext,
       pacingContext,
+      learningContext,
       memoryContext,
       ragContext,
     ].filter(Boolean).join('\n\n')
@@ -357,6 +364,13 @@ export async function POST(request: Request) {
                     toolName: tr.toolName,
                   },
                 })
+              }
+
+              // Learn about the owner from their own words every few messages,
+              // after the reply is sent so it never slows the chat down.
+              const ownerMessages = (dbMessages as Array<{ role?: unknown }>).filter((m) => m.role === 'user').length
+              if (ownerMessages > 0 && ownerMessages % PREFERENCE_EVERY_N_MESSAGES === 0) {
+                after(() => withServiceClient(createSupabaseServiceClient(), () => extractOwnerPreferences(userId)).then(() => undefined, () => undefined))
               }
 
               // A token or app secret pasted in this message was needed for this

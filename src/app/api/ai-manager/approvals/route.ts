@@ -5,6 +5,7 @@ import type { LocalToolContext } from '@/lib/ai/tools/local'
 import { createAIProvider } from '@/lib/ai/factory'
 import { resolveSecrets, SECRET_KEYS } from '@/lib/secrets'
 import type { AIProviderType } from '@/lib/ai/types'
+import { recordApprovalDecision } from '@/lib/ai/learning/feedback'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -76,6 +77,7 @@ export async function POST(request: Request) {
         where: { id: approvalId },
         data: { status: 'rejected', decidedBy: userId, decidedAt: new Date() },
       })
+      await recordApprovalDecision(userId, approval, 'reject')
       return Response.json({ success: true, status: 'rejected' })
     }
 
@@ -111,6 +113,7 @@ export async function POST(request: Request) {
 
     let args: Record<string, unknown> = {}
     try { args = JSON.parse(approval.arguments) as Record<string, unknown> } catch {}
+    await recordApprovalDecision(userId, approval, 'approve')
 
     const result = await executeTool(toolCtx, approval.toolName, args)
 

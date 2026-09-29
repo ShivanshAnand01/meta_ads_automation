@@ -21,6 +21,7 @@ interface Detail {
   approvals: Array<{ tool_name: string; summary: string; risk: string; status: string; created_at: string }>
   jobs: Array<{ type: string; cron_expression: string; status: string; last_run_at: string | null; next_run_at: string | null }>
   cost30d: Array<{ source: string; calls: number; costUsd: number }>
+  learnings: Array<{ kind: string; statement: string; status: string; occurrences: number; source: string; last_seen: string }>
 }
 
 interface Transcript {
@@ -58,7 +59,7 @@ export function AccountDetail({ userId, inr }: { userId: string; inr: (usd: numb
 
   return (
     <Tabs defaultValue="setup" className="gap-4">
-      <TabsList className="grid w-full grid-cols-4">
+      <TabsList className="grid w-full grid-cols-5">
         <TabsTrigger value="setup">Setup</TabsTrigger>
         <TabsTrigger value="activity">Chats</TabsTrigger>
         <TabsTrigger value="actions">
@@ -70,6 +71,7 @@ export function AccountDetail({ userId, inr }: { userId: string; inr: (usd: numb
           )}
         </TabsTrigger>
         <TabsTrigger value="agents">Agents</TabsTrigger>
+        <TabsTrigger value="learnings">Learned</TabsTrigger>
       </TabsList>
 
       <TabsContent value="setup" className="space-y-4">
@@ -157,6 +159,24 @@ export function AccountDetail({ userId, inr }: { userId: string; inr: (usd: numb
                     {r.report.findings.slice(0, 5).map((f, i) => <li key={i}>{f.finding}{f.evidence ? <span className="text-muted-foreground"> — {f.evidence}</span> : null}</li>)}
                   </ul>
                 )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </TabsContent>
+      <TabsContent value="learnings">
+        {(data.learnings ?? []).length === 0 ? <p className="text-sm text-muted-foreground">Nothing learned yet.</p> : (
+          <ul className="space-y-2">
+            {data.learnings.map((l, i) => (
+              <li key={i} className="rounded-xl border border-border px-3 py-2 text-sm">
+                <div className="mb-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground/80">{l.kind.replace(/_/g, ' ')}</span>
+                  <StatusPill tone={l.status === 'active' ? (l.kind === 'pitfall' ? 'warning' : 'good') : 'neutral'}>{l.status}</StatusPill>
+                  <span>{l.source}</span>
+                  {l.occurrences > 1 && <span>· {l.occurrences}×</span>}
+                  <span className="ml-auto tabular">{when(l.last_seen)}</span>
+                </div>
+                <p>{l.statement}</p>
               </li>
             ))}
           </ul>

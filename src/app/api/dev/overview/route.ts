@@ -37,6 +37,9 @@ export async function GET() {
       supabase.from('ad_creatives').select('user_id'),
       usdToInr(),
     ])
+    const { data: suggestionRows } = await supabase
+      .from('ai_learnings').select('user_id, statement, detail, occurrences, last_seen')
+      .eq('kind', 'platform_suggestion').eq('status', 'active').order('last_seen', { ascending: false }).limit(30)
 
     const group = <T,>(rows: T[] | null | undefined, key: (r: T) => string) => {
       const m = new Map<string, T[]>()
@@ -102,6 +105,9 @@ export async function GET() {
         agentRuns7d: accounts.reduce((s, a) => s + a.agentRuns7d, 0),
       },
       accounts,
+      suggestions: ((suggestionRows ?? []) as any[]).map((s) => ({
+        userId: s.user_id, statement: s.statement, evidence: s.detail?.evidence ?? '', occurrences: s.occurrences, lastSeen: s.last_seen,
+      })),
     })
   } catch (error) {
     return handleError(error, 'Failed to load the developer overview')

@@ -32,7 +32,7 @@ export async function GET(_request: Request, ctx: RouteContext<'/api/dev/account
     const supabase = createSupabaseServiceClient()
     const since30 = new Date(Date.now() - 30 * 86_400_000).toISOString()
 
-    const [user, profile, settings, meta, convs, actions, runs, approvals, jobs, usage] = await Promise.all([
+    const [user, profile, settings, meta, convs, actions, runs, approvals, jobs, usage, learnings] = await Promise.all([
       supabase.auth.admin.getUserById(id),
       supabase.from('business_profiles').select('*').eq('user_id', id).maybeSingle(),
       supabase.from('ai_settings').select('provider, model, base_url, api_key, embedding_key').eq('user_id', id).maybeSingle(),
@@ -43,6 +43,7 @@ export async function GET(_request: Request, ctx: RouteContext<'/api/dev/account
       supabase.from('pending_approvals').select('tool_name, summary, risk, status, created_at, expires_at').eq('user_id', id).order('created_at', { ascending: false }).limit(20),
       supabase.from('scheduled_jobs').select('type, cron_expression, status, last_run_at, next_run_at').eq('user_id', id),
       supabase.from('ai_usage').select('source, cost_usd').eq('user_id', id).gte('created_at', since30).limit(50_000),
+      supabase.from('ai_learnings').select('kind, statement, status, occurrences, source, last_seen').eq('user_id', id).in('status', ['active', 'resolved']).order('last_seen', { ascending: false }).limit(80),
     ])
     if (!user.data?.user) return Response.json({ error: 'No such account' }, { status: 404 })
 
@@ -76,6 +77,7 @@ export async function GET(_request: Request, ctx: RouteContext<'/api/dev/account
       agentRuns: runs.data ?? [],
       approvals: approvals.data ?? [],
       jobs: jobs.data ?? [],
+      learnings: learnings.data ?? [],
       cost30d: [...bySource.entries()].map(([source, b]) => ({ source, ...b })).sort((a, b) => b.costUsd - a.costUsd),
     })
   } catch (error) {

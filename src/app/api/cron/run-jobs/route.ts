@@ -4,6 +4,7 @@ import { runRoutine, type Routine } from '@/lib/ai/autonomous'
 import { CronExpressionParser } from 'cron-parser'
 import { isMachineAuthorized } from '@/lib/cron-auth'
 import { kickAgentQueue } from '@/lib/ai/agents/runner'
+import { runDueRetrospectives } from '@/lib/ai/learning/retrospective'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -109,6 +110,10 @@ async function handle(request: Request): Promise<Response> {
       }
     }
 
+    // Self-improvement: businesses active this week that have not had a
+    // learning review in 7 days get one. Bounded so the tick stays in time.
+    const learning = Date.now() - now.getTime() < 150_000 ? await runDueRetrospectives({ max: 2 }).catch(() => []) : []
+
     // Background specialist runs queued since the last tick get their own
     // invocation, so they do not share this one's time budget.
     await kickAgentQueue()
@@ -120,6 +125,7 @@ async function handle(request: Request): Promise<Response> {
       processed: batch.length,
       // Say so out loud rather than silently truncating.
       deferred: Math.max(0, due.length - batch.length),
+      learningReviews: learning,
       results,
     })
   })
