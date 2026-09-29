@@ -1,4 +1,5 @@
 import { db } from '@/lib/db/supabase-db'
+import { redactSecrets } from '@/lib/redact'
 import { createAIProvider } from '@/lib/ai/factory'
 import { processAgentMessage, streamAgentMessage, type AgentResult, type AgentStreamEvent } from '@/lib/ai/agent'
 import { toolsForUser } from '@/lib/ai/tool-definitions'
@@ -456,8 +457,8 @@ NOTE: this conversation is long, so the ${droppedCount} oldest message(s) are no
         conversationId,
         role: 'assistant',
         content: result.response,
-        toolCalls: JSON.stringify(result.toolCalls),
-        toolResults: JSON.stringify(result.toolResults),
+        toolCalls: JSON.stringify(redactSecrets(result.toolCalls)),
+        toolResults: JSON.stringify(redactSecrets(result.toolResults)),
       },
     })
     for (const tr of result.toolResults) {
@@ -465,7 +466,7 @@ NOTE: this conversation is long, so the ${droppedCount} oldest message(s) are no
         data: {
           conversationId,
           role: 'tool',
-          content: JSON.stringify(tr.error ? { error: tr.error } : tr.result ?? {}),
+          content: JSON.stringify(redactSecrets(tr.error ? { error: tr.error } : tr.result ?? {})),
           toolCallId: tr.toolCallId,
           toolName: tr.toolName,
         },

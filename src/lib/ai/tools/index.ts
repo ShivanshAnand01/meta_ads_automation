@@ -103,7 +103,7 @@ export async function executeTool(
 
   if (!allowExecute) {
     const risk = classifyRisk(tool)
-    const summary = buildApprovalSummary(tool, args)
+    const summary = await describeForApproval(tool, args, userId)
     let approvalId: string | null = null
     try {
       const row = (await db.pendingApproval.create({
@@ -400,6 +400,35 @@ async function executeGraphOp(tool: string, args: Record<string, unknown>, userI
 
     default:
       return { error: `Unknown Meta tool: ${tool}` }
+  }
+}
+
+/**
+ * The approval card is the owner's only view of what they are agreeing to, so
+ * name the campaign rather than show its id, and state budget and audience.
+ */
+async function describeForApproval(tool: string, args: Record<string, unknown>, userId: string): Promise<string> {
+  const base = buildApprovalSummary(tool, args)
+  const campaignTools = new Set(['publish_full_campaign', 'publish_campaign_to_meta', 'set_campaign_status', 'delete_local_campaign'])
+  const id = (args.campaignId || args.campaign_id) as string | undefined
+  if (!campaignTools.has(tool) || !id) return base
+  try {
+    const c = (await db.campaign.findUnique({ where: { id, userId } })) as any
+    if (!c) return base
+    const named = base.replace(id, `"${c.name}"`)
+    if (tool !== 'publish_full_campaign' && tool !== 'publish_campaign_to_meta') return named
+    const t = (args.targeting ?? {}) as { regions?: string[]; cities?: string[]; countries?: string[]; ageMin?: number; ageMax?: number }
+    const where = [...(t.cities ?? []), ...(t.regions ?? []), ...(t.countries ?? [])].join(', ')
+    const details = [
+      c.budget ? `₹${c.budget}${c.budgetType === 'lifetime' ? ' lifetime' : '/day'}` : null,
+      c.objective ? `objective ${String(c.objective).replace('OUTCOME_', '').toLowerCase()}` : null,
+      where ? `in ${where}` : null,
+      t.ageMin || t.ageMax ? `ages ${t.ageMin ?? 18}–${t.ageMax ?? 65}` : null,
+      (args.link_url || args.linkUrl || c.linkUrl) ? `linking to ${args.link_url || args.linkUrl || c.linkUrl}` : null,
+    ].filter(Boolean)
+    return details.length ? `${named} Details: ${details.join(', ')}.` : named
+  } catch {
+    return base
   }
 }
 

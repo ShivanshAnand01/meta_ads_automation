@@ -1,4 +1,5 @@
 import { db } from '@/lib/db/supabase-db'
+import { redactSecrets } from '@/lib/redact'
 import { createAutonomousManager, type AIManager } from '@/lib/ai/manager'
 import type { ToolCall, ChatMessage } from '@/lib/ai/types'
 import { buildStrategyContext } from '@/lib/ai/strategy'
@@ -99,7 +100,7 @@ export async function runRoutine(params: {
     buildMemoryContext(memory),
     'You are running without the client present. Act decisively within guardrails. ' +
       (strategy.autoOptimize
-        ? 'auto-optimize is ON: you may execute spend-affecting actions directly. Generate ad creative images when creating new creatives — use generate_creative_with_image or generate_ad_image. Image generation always works (free fallback provider).'
+        ? 'auto-optimize is ON: you may execute spend-affecting actions directly. Generate ad creative images when creating new creatives — use generate_creative_with_image or generate_ad_image. Image generation needs the OpenAI key; if it fails, save the creative with copy only and say so.'
         : 'auto-optimize is OFF: spend-affecting actions will queue for approval — still do read-only analysis, safe optimizations, and image generation for new creatives.'),
   ].filter(Boolean).join('\n\n')
 
@@ -130,15 +131,15 @@ export async function runRoutine(params: {
       data: {
         conversationId: conversation.id, role: 'assistant',
         content: result.response,
-        toolCalls: JSON.stringify(result.toolCalls),
-        toolResults: JSON.stringify(result.toolResults),
+        toolCalls: JSON.stringify(redactSecrets(result.toolCalls)),
+        toolResults: JSON.stringify(redactSecrets(result.toolResults)),
       },
     })
     for (const tr of result.toolResults as any[]) {
       await db.aiMessage.create({
         data: {
           conversationId: conversation.id, role: 'tool',
-          content: JSON.stringify(tr.error ? { error: tr.error } : tr.result ?? {}),
+          content: JSON.stringify(redactSecrets(tr.error ? { error: tr.error } : tr.result ?? {})),
           toolCallId: tr.toolCallId, toolName: tr.toolName,
         },
       })

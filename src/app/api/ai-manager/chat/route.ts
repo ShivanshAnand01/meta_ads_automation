@@ -17,6 +17,10 @@ import { cancelPendingQuestionsForConversation } from '@/lib/ai/pending-question
 // Vercel kills a function at its maxDuration. Without this the default
 // (10s Hobby / 15s Pro) truncates long AI work mid-stream.
 import { enforceRateLimit } from '@/lib/rate-limit'
+import { redactSecrets, redactSecretText } from '@/lib/redact'
+import { getProfile, buildProfileContext } from '@/lib/ai/profile'
+import { buildIntegrationsContext } from '@/lib/integrations/server'
+import { checkBudget, buildPacingContext } from '@/lib/ai/budget-guard'
 
 export const maxDuration = 300
 
@@ -162,9 +166,9 @@ export async function POST(request: Request) {
         .join('\n')
       userMessageContent = `${message}\n\n${attachmentInfo}${attachmentText}`
     }
-    await db.aiMessage.create({
+    const userRow = await db.aiMessage.create({
       data: { conversationId: conversation.id, role: 'user', content: userMessageContent },
-    })
+    }) as { id: string } | null
 
     // Load full history (including tool messages) and rehydrate into ChatMessage[]
     const dbMessages = await db.aiMessage.findMany({
@@ -256,10 +260,23 @@ export async function POST(request: Request) {
 
     const localCampaigns = await db.campaign.findMany({ where: { userId } }) as unknown[]
     const localCreatives = await db.adCreative.findMany({ where: { userId } }) as unknown[]
+
+    // The chat used to build its context without the business profile, so the
+    // AI Manager wrote copy without knowing the language, market or audience
+    // unless it thought to call get_business_profile. Routines always had it.
+    const [profileContext, integrationsContext, pacingContext] = await Promise.all([
+      getProfile(userId).then(buildProfileContext).catch(() => ''),
+      buildIntegrationsContext(userId).catch(() => ''),
+      checkBudget(userId, 'create_campaign', {}).then(buildPacingContext).catch(() => ''),
+    ])
+
     const contextString = [
       `CONTEXT: ${metaStatus} The user has ${localCampaigns.length} local campaign(s) and ${localCreatives.length} local creative(s).`,
       'Call sync_campaign_insights before analyzing performance so you work with real Meta data.',
+      profileContext,
+      integrationsContext,
       strategyContext,
+      pacingContext,
       memoryContext,
       ragContext,
     ].filter(Boolean).join('\n\n')
@@ -323,9 +340,9 @@ export async function POST(request: Request) {
                 data: {
                   conversationId: conversation!.id,
                   role: 'assistant',
-                  content: finalResult.response,
-                  toolCalls: JSON.stringify(finalResult.toolCalls),
-                  toolResults: JSON.stringify(finalResult.toolResults),
+                  content: redactSecretText(finalResult.response),
+                  toolCalls: JSON.stringify(redactSecrets(finalResult.toolCalls)),
+                  toolResults: JSON.stringify(redactSecrets(finalResult.toolResults)),
                 },
               }) as { id: string } | null
               assistantMessageId = assistantMsg?.id || null
@@ -335,11 +352,17 @@ export async function POST(request: Request) {
                   data: {
                     conversationId: conversation!.id,
                     role: 'tool',
-                    content: JSON.stringify(tr.error ? { error: tr.error } : tr.result ?? {}),
+                    content: JSON.stringify(redactSecrets(tr.error ? { error: tr.error } : tr.result ?? {})),
                     toolCallId: tr.toolCallId,
                     toolName: tr.toolName,
                   },
                 })
+              }
+
+              // A token or app secret pasted in this message was needed for this
+              // turn only. Blank it in the saved history now the turn is done.
+              if (userRow?.id && redactSecretText(userMessageContent) !== userMessageContent) {
+                await db.aiMessage.update({ where: { id: userRow.id }, data: { content: redactSecretText(userMessageContent) } }).catch(() => {})
               }
 
               for (const note of finalResult.notes) {
